@@ -3841,6 +3841,7 @@
     "默认用户消息": "Default User Message",
     "默认补全倍率": "Default completion ratio",
     "请稍后几秒重试，人机验证正在初始化...": "Please wait a moment, human verification is initializing...",
+    "请先完成人机验证后再继续。": "Please complete the human verification before continuing.",
     "Bot Protection": "Bot Protection",
     "Require human verification on login, registration, and password recovery": "Require human verification on login, registration, and password recovery",
     "Enable bot protection": "Enable bot protection",

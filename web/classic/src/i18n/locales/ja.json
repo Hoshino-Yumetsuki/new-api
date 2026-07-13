@@ -3655,6 +3655,7 @@
     "默认用户消息": "こんにちは",
     "默认补全倍率": "デフォルト補完倍率",
     "请稍后几秒重试，人机验证正在初始化...": "しばらくお待ちください。人間確認を初期化しています...",
+    "请先完成人机验证后再继续。": "続行する前に人間確認を完了してください。",
     "Bot Protection": "ボット保護",
     "Require human verification on login, registration, and password recovery": "ログイン、登録、パスワード再設定で人間確認を必須にする",
     "Enable bot protection": "ボット保護を有効にする",

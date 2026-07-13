@@ -86,6 +86,7 @@ export function UserAuthForm({
     capApiEndpoint,
     turnstileToken,
     setTurnstileToken,
+    markBotProtectionReady,
     validateTurnstile,
   } = useTurnstile()
   const { handleLoginSuccess, redirectTo2FA } = useAuthRedirect()
@@ -381,6 +382,7 @@ export function UserAuthForm({
                 capApiEndpoint={capApiEndpoint}
                 onVerify={setTurnstileToken}
                 onExpire={() => setTurnstileToken('')}
+                onReady={markBotProtectionReady}
                 className='py-1'
               />
             )}

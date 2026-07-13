@@ -73,6 +73,7 @@ export function SignUpForm({
     capApiEndpoint,
     turnstileToken,
     setTurnstileToken,
+    markBotProtectionReady,
     validateTurnstile,
   } = useTurnstile()
   const { redirectToLogin, handleLoginSuccess } = useAuthRedirect()
@@ -106,7 +107,6 @@ export function SignUpForm({
     status?.data?.oauth_register_enabled ??
     true
   const hasWeChatLogin = Boolean(status?.wechat_login)
-  const turnstileReady = !isTurnstileEnabled || Boolean(turnstileToken)
 
   const wechatQrCodeUrl = useMemo(() => {
     return (
@@ -320,8 +320,7 @@ export function SignUpForm({
                   isLoading ||
                   isSendingCode ||
                   isActive ||
-                  !emailValue ||
-                  !turnstileReady
+                  !emailValue
                 }
                 onClick={handleSendVerificationCode}
               >
@@ -344,6 +343,7 @@ export function SignUpForm({
             capApiEndpoint={capApiEndpoint}
             onVerify={setTurnstileToken}
             onExpire={() => setTurnstileToken('')}
+            onReady={markBotProtectionReady}
             className='py-1'
           />
         )}
@@ -360,9 +360,7 @@ export function SignUpForm({
           type='submit'
           className='mt-2 w-full justify-center gap-2'
           disabled={
-            isLoading ||
-            (requiresLegalConsent && !agreedToLegal) ||
-            !turnstileReady
+            isLoading || (requiresLegalConsent && !agreedToLegal)
           }
         >
           {isLoading ? <Loader2 className='h-4 w-4 animate-spin' /> : null}

@@ -30,8 +30,12 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { Dialog } from '@/components/dialog'
-import { Turnstile } from '@/components/turnstile'
 import { Button } from '@/components/ui/button'
+import { BotProtectionField } from '@/features/auth/components/bot-protection-field'
+import {
+  shouldTriggerBotProtection,
+  type BotProtectionProvider,
+} from '@/lib/bot-protection'
 import { Card } from '@/components/ui/card'
 import { IconBadge } from '@/components/ui/icon-badge'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -50,14 +54,18 @@ import type { CheckinRecord } from '../types'
 
 interface CheckinCalendarCardProps {
   checkinEnabled: boolean
-  turnstileEnabled: boolean
+  botProtectionEnabled: boolean
+  provider: BotProtectionProvider
   turnstileSiteKey: string
+  capApiEndpoint: string
 }
 
 export function CheckinCalendarCard({
   checkinEnabled,
-  turnstileEnabled,
+  botProtectionEnabled,
+  provider,
   turnstileSiteKey,
+  capApiEndpoint,
 }: CheckinCalendarCardProps) {
   const { t } = useTranslation()
   const [currentMonth, setCurrentMonth] = useState(() => {
@@ -65,8 +73,8 @@ export function CheckinCalendarCard({
     return new Date(now.getFullYear(), now.getMonth(), 1)
   })
   const [checkinLoading, setCheckinLoading] = useState(false)
-  const [turnstileModalVisible, setTurnstileModalVisible] = useState(false)
-  const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0)
+  const [securityModalVisible, setSecurityModalVisible] = useState(false)
+  const [botWidgetKey, setBotWidgetKey] = useState(0)
   const [initialLoaded, setInitialLoaded] = useState(false)
   const [collapsed, setCollapsed] = useState<boolean>(false)
 
@@ -129,15 +137,6 @@ export function CheckinCalendarCard({
     setInitialLoaded(true)
   }, [checkinData, checkedToday, initialLoaded, isLoading])
 
-  const shouldTriggerTurnstile = useCallback(
-    (message?: string) => {
-      if (!turnstileEnabled) return false
-      if (typeof message !== 'string') return true
-      return message.includes('Turnstile')
-    },
-    [turnstileEnabled]
-  )
-
   const doCheckin = useCallback(
     async (token?: string) => {
       setCheckinLoading(true)
@@ -148,18 +147,24 @@ export function CheckinCalendarCard({
             `${t('Check-in successful! Received')} ${formatQuotaWithCurrency(res.data.quota_awarded)}`
           )
           refetch()
-          setTurnstileModalVisible(false)
+          setSecurityModalVisible(false)
         } else {
-          if (!token && shouldTriggerTurnstile(res.message)) {
-            if (!turnstileSiteKey) {
+          if (
+            !token &&
+            shouldTriggerBotProtection(botProtectionEnabled, res.message)
+          ) {
+            if (!provider) {
               toast.error(t('Turnstile is enabled but site key is empty.'))
               return
             }
-            setTurnstileModalVisible(true)
+            setSecurityModalVisible(true)
             return
           }
-          if (token && shouldTriggerTurnstile(res.message)) {
-            setTurnstileWidgetKey((v) => v + 1)
+          if (
+            token &&
+            shouldTriggerBotProtection(botProtectionEnabled, res.message)
+          ) {
+            setBotWidgetKey((v) => v + 1)
           }
           toast.error(res.message || t('Check-in failed'))
         }
@@ -169,7 +174,7 @@ export function CheckinCalendarCard({
         setCheckinLoading(false)
       }
     },
-    [refetch, shouldTriggerTurnstile, t, turnstileSiteKey]
+    [botProtectionEnabled, provider, refetch, t]
   )
 
   const handlePrevMonth = () => {
@@ -252,11 +257,11 @@ export function CheckinCalendarCard({
   return (
     <TooltipProvider delay={100}>
       <Dialog
-        open={turnstileModalVisible}
+        open={securityModalVisible}
         onOpenChange={(open) => {
-          setTurnstileModalVisible(open)
+          setSecurityModalVisible(open)
           if (!open) {
-            setTurnstileWidgetKey((v) => v + 1)
+            setBotWidgetKey((v) => v + 1)
           }
         }}
         title={t('Security Check')}
@@ -267,18 +272,19 @@ export function CheckinCalendarCard({
         <div className='text-muted-foreground text-sm'>
           {t('Please complete the security check to continue.')}
         </div>
-        <div className='flex justify-center py-4'>
-          <Turnstile
-            key={turnstileWidgetKey}
-            siteKey={turnstileSiteKey}
-            onVerify={(token) => {
-              doCheckin(token)
-            }}
-            onExpire={() => {
-              setTurnstileWidgetKey((v) => v + 1)
-            }}
-          />
-        </div>
+        <BotProtectionField
+          key={botWidgetKey}
+          provider={provider}
+          turnstileSiteKey={turnstileSiteKey}
+          capApiEndpoint={capApiEndpoint}
+          onVerify={(token) => {
+            doCheckin(token)
+          }}
+          onExpire={() => {
+            setBotWidgetKey((v) => v + 1)
+          }}
+          className='py-4'
+        />
       </Dialog>
 
       <Card data-card-hover='false' className='gap-0 overflow-hidden py-0'>

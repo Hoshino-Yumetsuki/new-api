@@ -32,7 +32,7 @@ const capWidgetThemeStyle = {
   '--cap-spinner-background-color': 'var(--semi-color-primary-light-default)',
 };
 
-const CapWidget = ({ apiEndpoint, onVerify, onExpire, className }) => {
+const CapWidget = ({ apiEndpoint, onVerify, onExpire, onReady, className }) => {
   const ref = useRef(null);
 
   useEffect(() => {
@@ -55,6 +55,10 @@ const CapWidget = ({ apiEndpoint, onVerify, onExpire, className }) => {
       el.removeEventListener('reset', handleExpire);
     };
   }, [apiEndpoint, onVerify, onExpire]);
+
+  useEffect(() => {
+    onReady?.();
+  }, [apiEndpoint, onReady]);
 
   return (
     <div className={className} style={capWidgetThemeStyle}>

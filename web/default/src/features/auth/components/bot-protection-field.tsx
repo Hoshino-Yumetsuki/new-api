@@ -18,7 +18,7 @@ For commercial licensing, please contact support@quantumnous.com
 */
 import { CapWidget } from '@/components/cap-widget'
 import { Turnstile } from '@/components/turnstile'
-import type { BotProtectionProvider } from '@/features/auth/hooks/use-turnstile'
+import type { BotProtectionProvider } from '@/lib/bot-protection'
 import { cn } from '@/lib/utils'
 
 type BotProtectionFieldProps = {
@@ -27,6 +27,7 @@ type BotProtectionFieldProps = {
   capApiEndpoint: string
   onVerify: (token: string) => void
   onExpire?: () => void
+  onReady?: () => void
   className?: string
 }
 
@@ -36,6 +37,7 @@ export function BotProtectionField({
   capApiEndpoint,
   onVerify,
   onExpire,
+  onReady,
   className,
 }: BotProtectionFieldProps) {
   if (!provider) return null
@@ -47,12 +49,14 @@ export function BotProtectionField({
           apiEndpoint={capApiEndpoint}
           onVerify={onVerify}
           onExpire={onExpire}
+          onReady={onReady}
         />
       ) : (
         <Turnstile
           siteKey={turnstileSiteKey}
           onVerify={onVerify}
           onExpire={onExpire}
+          onReady={onReady}
         />
       )}
     </div>

@@ -36,14 +36,21 @@ import {
   ChevronDown,
   ChevronUp,
 } from 'lucide-react';
-import Turnstile from 'react-turnstile';
-import { API, showError, showSuccess, renderQuota } from '../../../../helpers';
+import { API, showError, showSuccess, renderQuota, shouldTriggerBotProtection } from '../../../../helpers';
+import BotProtectionField from '../../../auth/BotProtectionField';
 
-const CheckinCalendar = ({ t, status, turnstileEnabled, turnstileSiteKey }) => {
+const CheckinCalendar = ({
+  t,
+  status,
+  botProtectionEnabled,
+  provider,
+  turnstileSiteKey,
+  capApiEndpoint,
+}) => {
   const [loading, setLoading] = useState(false);
   const [checkinLoading, setCheckinLoading] = useState(false);
-  const [turnstileModalVisible, setTurnstileModalVisible] = useState(false);
-  const [turnstileWidgetKey, setTurnstileWidgetKey] = useState(0);
+  const [securityModalVisible, setSecurityModalVisible] = useState(false);
+  const [botWidgetKey, setBotWidgetKey] = useState(0);
   const [checkinData, setCheckinData] = useState({
     enabled: false,
     stats: {
@@ -120,12 +127,6 @@ const CheckinCalendar = ({ t, status, turnstileEnabled, turnstileSiteKey }) => {
     return API.post(url);
   };
 
-  const shouldTriggerTurnstile = (message) => {
-    if (!turnstileEnabled) return false;
-    if (typeof message !== 'string') return true;
-    return message.includes('Turnstile');
-  };
-
   const doCheckin = async (token) => {
     setCheckinLoading(true);
     try {
@@ -135,20 +136,19 @@ const CheckinCalendar = ({ t, status, turnstileEnabled, turnstileSiteKey }) => {
         showSuccess(
           t('签到成功！获得') + ' ' + renderQuota(data.quota_awarded),
         );
-        // 刷新签到状态
         fetchCheckinStatus(currentMonth);
-        setTurnstileModalVisible(false);
+        setSecurityModalVisible(false);
       } else {
-        if (!token && shouldTriggerTurnstile(message)) {
-          if (!turnstileSiteKey) {
+        if (!token && shouldTriggerBotProtection(botProtectionEnabled, message)) {
+          if (!provider) {
             showError('Turnstile is enabled but site key is empty.');
             return;
           }
-          setTurnstileModalVisible(true);
+          setSecurityModalVisible(true);
           return;
         }
-        if (token && shouldTriggerTurnstile(message)) {
-          setTurnstileWidgetKey((v) => v + 1);
+        if (token && shouldTriggerBotProtection(botProtectionEnabled, message)) {
+          setBotWidgetKey((v) => v + 1);
         }
         showError(message || t('签到失败'));
       }
@@ -216,26 +216,27 @@ const CheckinCalendar = ({ t, status, turnstileEnabled, turnstileSiteKey }) => {
     <Card className='!rounded-2xl'>
       <Modal
         title='Security Check'
-        visible={turnstileModalVisible}
+        visible={securityModalVisible}
         footer={null}
         centered
         onCancel={() => {
-          setTurnstileModalVisible(false);
-          setTurnstileWidgetKey((v) => v + 1);
+          setSecurityModalVisible(false);
+          setBotWidgetKey((v) => v + 1);
         }}
       >
-        <div className='flex justify-center py-2'>
-          <Turnstile
-            key={turnstileWidgetKey}
-            sitekey={turnstileSiteKey}
-            onVerify={(token) => {
-              doCheckin(token);
-            }}
-            onExpire={() => {
-              setTurnstileWidgetKey((v) => v + 1);
-            }}
-          />
-        </div>
+        <BotProtectionField
+          key={botWidgetKey}
+          provider={provider}
+          turnstileSiteKey={turnstileSiteKey}
+          capApiEndpoint={capApiEndpoint}
+          onVerify={(verifyToken) => {
+            doCheckin(verifyToken);
+          }}
+          onExpire={() => {
+            setBotWidgetKey((v) => v + 1);
+          }}
+          className='py-2'
+        />
       </Modal>
 
       {/* 卡片头部 */}

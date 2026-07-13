@@ -3679,6 +3679,7 @@
     "默认用户消息": "你好",
     "默认补全倍率": "預設補全倍率",
     "请稍后几秒重试，人机验证正在初始化...": "請稍後幾秒重試，人機驗證正在初始化...",
+    "请先完成人机验证后再继续。": "請先完成人機驗證後再繼續。",
     "Bot Protection": "機器人保護",
     "Require human verification on login, registration, and password recovery": "在登入、註冊與找回密碼時要求人機驗證",
     "Enable bot protection": "啟用人機驗證",

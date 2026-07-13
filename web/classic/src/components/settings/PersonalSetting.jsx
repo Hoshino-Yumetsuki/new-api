@@ -31,6 +31,7 @@ import {
   isPasskeySupported,
   setUserData,
   getBotProtectionFromStatus,
+  validateBotProtectionToken,
 } from '../../helpers';
 import { UserContext } from '../../context/User';
 import { Modal } from '@douyinfe/semi-ui';
@@ -73,6 +74,7 @@ const PersonalSetting = () => {
   const [capApiEndpoint, setCapApiEndpoint] = useState('');
   const [botProvider, setBotProvider] = useState(null);
   const [turnstileToken, setTurnstileToken] = useState('');
+  const [botProtectionReady, setBotProtectionReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const [disableButton, setDisableButton] = useState(false);
   const [countdown, setCountdown] = useState(30);
@@ -138,8 +140,10 @@ const PersonalSetting = () => {
       setBotProvider(bp.provider);
       setTurnstileSiteKey(bp.turnstileSiteKey);
       setCapApiEndpoint(bp.capApiEndpoint);
+      setTurnstileToken('');
+      setBotProtectionReady(false);
     }
-    // Always refresh status from server to avoid stale flags (e.g., admin just enabled OAuth)
+    // Always refresh status from server
     (async () => {
       try {
         const res = await API.get('/api/status');
@@ -152,6 +156,8 @@ const PersonalSetting = () => {
           setBotProvider(bp.provider);
           setTurnstileSiteKey(bp.turnstileSiteKey);
           setCapApiEndpoint(bp.capApiEndpoint);
+          setTurnstileToken('');
+          setBotProtectionReady(false);
         }
       } catch (e) {
         // ignore and keep local status
@@ -447,8 +453,15 @@ const PersonalSetting = () => {
       return;
     }
     setDisableButton(true);
-    if (turnstileEnabled && turnstileToken === '') {
-      showInfo(t('请稍后几秒重试，Turnstile 正在检查用户环境！'));
+    const bpCheck = validateBotProtectionToken({
+      enabled: turnstileEnabled,
+      ready: botProtectionReady,
+      token: turnstileToken,
+      t,
+    });
+    if (!bpCheck.ok) {
+      setDisableButton(false);
+      showInfo(bpCheck.message);
       return;
     }
     setLoading(true);
@@ -553,8 +566,10 @@ const PersonalSetting = () => {
               <CheckinCalendar
                 t={t}
                 status={status}
-                turnstileEnabled={turnstileEnabled}
+                botProtectionEnabled={turnstileEnabled}
+                provider={botProvider}
                 turnstileSiteKey={turnstileSiteKey}
+                capApiEndpoint={capApiEndpoint}
               />
             </div>
           )}
@@ -614,6 +629,7 @@ const PersonalSetting = () => {
         botProvider={botProvider}
         capApiEndpoint={capApiEndpoint}
         setTurnstileToken={setTurnstileToken}
+        onBotProtectionReady={() => setBotProtectionReady(true)}
       />
 
       <WeChatBindModal
@@ -639,6 +655,7 @@ const PersonalSetting = () => {
         botProvider={botProvider}
         capApiEndpoint={capApiEndpoint}
         setTurnstileToken={setTurnstileToken}
+        onBotProtectionReady={() => setBotProtectionReady(true)}
       />
 
       <ChangePasswordModal
@@ -653,6 +670,7 @@ const PersonalSetting = () => {
         botProvider={botProvider}
         capApiEndpoint={capApiEndpoint}
         setTurnstileToken={setTurnstileToken}
+        onBotProtectionReady={() => setBotProtectionReady(true)}
       />
 
       <SecureVerificationModal

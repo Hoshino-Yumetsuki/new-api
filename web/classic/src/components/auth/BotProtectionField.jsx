@@ -27,6 +27,7 @@ const BotProtectionField = ({
   capApiEndpoint,
   onVerify,
   onExpire,
+  onReady,
   className,
 }) => {
   if (!provider) return null;
@@ -38,11 +39,13 @@ const BotProtectionField = ({
           apiEndpoint={capApiEndpoint}
           onVerify={onVerify}
           onExpire={onExpire}
+          onReady={onReady}
         />
       ) : (
         <Turnstile
           sitekey={turnstileSiteKey}
           onVerify={(token) => onVerify(token)}
+          onLoad={onReady}
         />
       )}
     </div>

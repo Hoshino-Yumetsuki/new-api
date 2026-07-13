@@ -35,6 +35,7 @@ const AccountDeleteModal = ({
   botProvider,
   capApiEndpoint,
   setTurnstileToken,
+  onBotProtectionReady,
 }) => {
   return (
     <Modal
@@ -85,6 +86,7 @@ const AccountDeleteModal = ({
             capApiEndpoint={capApiEndpoint}
             onVerify={(token) => setTurnstileToken(token)}
             onExpire={() => setTurnstileToken('')}
+            onReady={onBotProtectionReady}
           />
         )}
       </div>

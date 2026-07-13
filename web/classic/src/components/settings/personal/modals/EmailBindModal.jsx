@@ -38,6 +38,7 @@ const EmailBindModal = ({
   botProvider,
   capApiEndpoint,
   setTurnstileToken,
+  onBotProtectionReady,
 }) => {
   return (
     <Modal
@@ -99,6 +100,7 @@ const EmailBindModal = ({
             capApiEndpoint={capApiEndpoint}
             onVerify={(token) => setTurnstileToken(token)}
             onExpire={() => setTurnstileToken('')}
+            onReady={onBotProtectionReady}
           />
         )}
       </div>

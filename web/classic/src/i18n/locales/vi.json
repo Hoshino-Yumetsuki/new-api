@@ -4220,6 +4220,7 @@
     "默认用户消息": "Xin chào",
     "默认补全倍率": "Tỷ lệ hoàn thành mặc định",
     "请稍后几秒重试，人机验证正在初始化...": "Vui lòng đợi vài giây, xác minh người đang khởi tạo...",
+    "请先完成人机验证后再继续。": "Vui lòng hoàn tất xác minh người trước khi tiếp tục.",
     "Bot Protection": "Bảo vệ bot",
     "Require human verification on login, registration, and password recovery": "Yêu cầu xác minh người khi đăng nhập, đăng ký và khôi phục mật khẩu",
     "Enable bot protection": "Bật bảo vệ bot",

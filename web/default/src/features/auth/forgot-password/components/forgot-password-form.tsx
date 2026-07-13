@@ -58,6 +58,7 @@ export function ForgotPasswordForm({
     capApiEndpoint,
     turnstileToken,
     setTurnstileToken,
+    markBotProtectionReady,
     validateTurnstile,
   } = useTurnstile()
   const {
@@ -70,7 +71,6 @@ export function ForgotPasswordForm({
     resolver: zodResolver(forgotPasswordFormSchema),
     defaultValues: { email: '' },
   })
-  const turnstileReady = !isTurnstileEnabled || Boolean(turnstileToken)
 
   async function onSubmit(data: z.infer<typeof forgotPasswordFormSchema>) {
     if (!validateTurnstile()) return
@@ -120,6 +120,7 @@ export function ForgotPasswordForm({
             capApiEndpoint={capApiEndpoint}
             onVerify={setTurnstileToken}
             onExpire={() => setTurnstileToken('')}
+            onReady={markBotProtectionReady}
             className='py-1'
           />
         )}
@@ -127,7 +128,7 @@ export function ForgotPasswordForm({
         <Button
           type='submit'
           className='mt-2'
-          disabled={isLoading || isActive || !turnstileReady}
+          disabled={isLoading || isActive}
         >
           {isActive
             ? t('Resend ({{seconds}}s)', { seconds: secondsLeft })

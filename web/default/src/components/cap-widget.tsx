@@ -39,6 +39,7 @@ interface CapWidgetProps {
   apiEndpoint: string
   onVerify: (token: string) => void
   onExpire?: () => void
+  onReady?: () => void
   className?: string
 }
 
@@ -46,6 +47,7 @@ export function CapWidget({
   apiEndpoint,
   onVerify,
   onExpire,
+  onReady,
   className,
 }: CapWidgetProps) {
   const ref = useRef<HTMLElement | null>(null)
@@ -70,6 +72,10 @@ export function CapWidget({
       el.removeEventListener('reset', handleExpire)
     }
   }, [apiEndpoint, onVerify, onExpire])
+
+  useEffect(() => {
+    onReady?.()
+  }, [apiEndpoint, onReady])
 
   return (
     <div className={cn(className)} style={capWidgetThemeStyle}>

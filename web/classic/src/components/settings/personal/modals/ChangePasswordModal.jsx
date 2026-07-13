@@ -34,6 +34,7 @@ const ChangePasswordModal = ({
   botProvider,
   capApiEndpoint,
   setTurnstileToken,
+  onBotProtectionReady,
 }) => {
   return (
     <Modal
@@ -108,6 +109,7 @@ const ChangePasswordModal = ({
             capApiEndpoint={capApiEndpoint}
             onVerify={(token) => setTurnstileToken(token)}
             onExpire={() => setTurnstileToken('')}
+            onReady={onBotProtectionReady}
           />
         )}
       </div>

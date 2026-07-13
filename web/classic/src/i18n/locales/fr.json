@@ -3686,6 +3686,7 @@
     "默认用户消息": "Bonjour",
     "默认补全倍率": "Taux de complétion par défaut",
     "请稍后几秒重试，人机验证正在初始化...": "Veuillez patienter, la vérification humaine s'initialise...",
+    "请先完成人机验证后再继续。": "Veuillez terminer la vérification humaine avant de continuer.",
     "Bot Protection": "Protection anti-bot",
     "Require human verification on login, registration, and password recovery": "Exiger une vérification humaine à la connexion, l'inscription et la récupération du mot de passe",
     "Enable bot protection": "Activer la protection anti-bot",

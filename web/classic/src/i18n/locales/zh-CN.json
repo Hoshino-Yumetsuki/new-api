@@ -3815,6 +3815,7 @@
     "默认用户消息": "你好",
     "默认补全倍率": "默认补全倍率",
     "请稍后几秒重试，人机验证正在初始化...": "请稍后几秒重试，人机验证正在初始化...",
+    "请先完成人机验证后再继续。": "请先完成人机验证后再继续。",
     "Bot Protection": "机器人保护",
     "Require human verification on login, registration, and password recovery": "在登录、注册与找回密码时要求人机验证",
     "Enable bot protection": "启用人机验证",

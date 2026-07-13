@@ -30,6 +30,7 @@ interface TurnstileProps {
   siteKey: string
   onVerify: (token: string) => void
   onExpire?: () => void
+  onReady?: () => void
   className?: string
 }
 
@@ -37,6 +38,7 @@ export function Turnstile({
   siteKey,
   onVerify,
   onExpire,
+  onReady,
   className,
 }: TurnstileProps) {
   const ref = useRef<HTMLDivElement | null>(null)
@@ -51,6 +53,7 @@ export function Turnstile({
           'error-callback': () => onExpire?.(),
           'expired-callback': () => onExpire?.(),
         })
+        onReady?.()
       } catch {
         /* empty */
       }
@@ -70,7 +73,7 @@ export function Turnstile({
     s.defer = true
     s.onload = () => render()
     document.head.appendChild(s)
-  }, [siteKey, onVerify, onExpire])
+  }, [siteKey, onVerify, onExpire, onReady])
 
   return <div ref={ref} className={className} />
 }

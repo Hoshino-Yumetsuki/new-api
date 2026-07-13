@@ -22,6 +22,7 @@ import {
   CardStaggerItem,
 } from '@/components/page-transition'
 import { useStatus } from '@/hooks/use-status'
+import { getBotProtectionFromStatus } from '@/lib/bot-protection'
 import { useAuthStore } from '@/stores/auth-store'
 
 import { CheckinCalendarCard } from './components/checkin-calendar-card'
@@ -40,10 +41,7 @@ export function Profile() {
   const permissions = useAuthStore((s) => s.auth.user?.permissions)
 
   const checkinEnabled = status?.checkin_enabled === true
-  const turnstileEnabled = !!(
-    status?.turnstile_check && status?.turnstile_site_key
-  )
-  const turnstileSiteKey = status?.turnstile_site_key || ''
+  const botProtection = getBotProtectionFromStatus(status)
   const canConfigureSidebar = permissions?.sidebar_settings !== false
 
   return (
@@ -73,8 +71,10 @@ export function Profile() {
                 {checkinEnabled && (
                   <CheckinCalendarCard
                     checkinEnabled={checkinEnabled}
-                    turnstileEnabled={turnstileEnabled}
-                    turnstileSiteKey={turnstileSiteKey}
+                    botProtectionEnabled={botProtection.enabled}
+                    provider={botProtection.provider}
+                    turnstileSiteKey={botProtection.turnstileSiteKey}
+                    capApiEndpoint={botProtection.capApiEndpoint}
                   />
                 )}
                 {canConfigureSidebar && <SidebarModulesCard />}

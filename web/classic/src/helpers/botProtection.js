@@ -50,3 +50,35 @@ export function getBotProtectionFromStatus(status = {}) {
     capApiEndpoint,
   };
 }
+
+const INIT_MSG = '请稍后几秒重试，人机验证正在初始化...';
+const COMPLETE_MSG = '请先完成人机验证后再继续。';
+
+/**
+ * @param {object} opts
+ * @param {boolean} opts.enabled
+ * @param {boolean} opts.ready
+ * @param {string} opts.token
+ * @param {(key: string) => string} opts.t
+ * @returns {{ ok: true } | { ok: false, messageKey: string }}
+ */
+export function validateBotProtectionToken({ enabled, ready, token, t }) {
+  if (!enabled || token) return { ok: true };
+  const messageKey = ready ? COMPLETE_MSG : INIT_MSG;
+  return { ok: false, message: t(messageKey) };
+}
+
+/**
+ * @param {boolean} botProtectionEnabled
+ * @param {string} [message]
+ */
+export function shouldTriggerBotProtection(botProtectionEnabled, message) {
+  if (!botProtectionEnabled) return false;
+  if (typeof message !== 'string' || message.length === 0) return true;
+  return (
+    message.includes('Turnstile') ||
+    message.includes('Cap.js') ||
+    message.includes('人机验证') ||
+    message.includes('token 为空')
+  );
+}

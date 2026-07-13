@@ -41,7 +41,7 @@ import {
   isPasskeySupported,
 } from '../../helpers';
 import BotProtectionField from './BotProtectionField';
-import { getBotProtectionFromStatus } from '../../helpers';
+import { getBotProtectionFromStatus, validateBotProtectionToken } from '../../helpers';
 import {
   Button,
   Card,
@@ -91,6 +91,7 @@ const LoginForm = () => {
   const [capApiEndpoint, setCapApiEndpoint] = useState('');
   const [botProvider, setBotProvider] = useState(null);
   const [turnstileToken, setTurnstileToken] = useState('');
+  const [botProtectionReady, setBotProtectionReady] = useState(false);
   const [showWeChatLoginModal, setShowWeChatLoginModal] = useState(false);
   const [showEmailLogin, setShowEmailLogin] = useState(false);
   const [wechatLoading, setWechatLoading] = useState(false);
@@ -152,6 +153,8 @@ const LoginForm = () => {
     setBotProvider(bp.provider);
     setTurnstileSiteKey(bp.turnstileSiteKey);
     setCapApiEndpoint(bp.capApiEndpoint);
+    setTurnstileToken('');
+    setBotProtectionReady(false);
 
     // 从 status 获取用户协议和隐私政策的启用状态
     setHasUserAgreement(status?.user_agreement_enabled || false);
@@ -187,8 +190,14 @@ const LoginForm = () => {
   };
 
   const onSubmitWeChatVerificationCode = async () => {
-    if (turnstileEnabled && turnstileToken === '') {
-      showInfo(t('请稍后几秒重试，人机验证正在初始化...'));
+    const bpCheck = validateBotProtectionToken({
+      enabled: turnstileEnabled,
+      ready: botProtectionReady,
+      token: turnstileToken,
+      t,
+    });
+    if (!bpCheck.ok) {
+      showInfo(bpCheck.message);
       return;
     }
     setWechatCodeSubmitLoading(true);
@@ -224,8 +233,14 @@ const LoginForm = () => {
       showInfo(t('请先阅读并同意用户协议和隐私政策'));
       return;
     }
-    if (turnstileEnabled && turnstileToken === '') {
-      showInfo(t('请稍后几秒重试，人机验证正在初始化...'));
+    const bpCheck = validateBotProtectionToken({
+      enabled: turnstileEnabled,
+      ready: botProtectionReady,
+      token: turnstileToken,
+      t,
+    });
+    if (!bpCheck.ok) {
+      showInfo(bpCheck.message);
       return;
     }
     setSubmitted(true);
@@ -813,6 +828,7 @@ const LoginForm = () => {
                     capApiEndpoint={capApiEndpoint}
                     onVerify={(token) => setTurnstileToken(token)}
                     onExpire={() => setTurnstileToken('')}
+                    onReady={() => setBotProtectionReady(true)}
                     className='mt-6'
                   />
                 )}

@@ -26,6 +26,7 @@ import {
   showSuccess,
   getSystemName,
   getBotProtectionFromStatus,
+  validateBotProtectionToken,
 } from '../../helpers';
 import BotProtectionField from './BotProtectionField';
 import { Button, Card, Form, Typography } from '@douyinfe/semi-ui';
@@ -48,6 +49,7 @@ const PasswordResetForm = () => {
   const [capApiEndpoint, setCapApiEndpoint] = useState('');
   const [botProvider, setBotProvider] = useState(null);
   const [turnstileToken, setTurnstileToken] = useState('');
+  const [botProtectionReady, setBotProtectionReady] = useState(false);
   const [disableButton, setDisableButton] = useState(false);
   const [countdown, setCountdown] = useState(30);
 
@@ -63,6 +65,8 @@ const PasswordResetForm = () => {
       setBotProvider(bp.provider);
       setTurnstileSiteKey(bp.turnstileSiteKey);
       setCapApiEndpoint(bp.capApiEndpoint);
+      setTurnstileToken('');
+      setBotProtectionReady(false);
     }
   }, []);
 
@@ -88,8 +92,14 @@ const PasswordResetForm = () => {
       showError(t('请输入邮箱地址'));
       return;
     }
-    if (turnstileEnabled && turnstileToken === '') {
-      showInfo(t('请稍后几秒重试，人机验证正在初始化...'));
+    const bpCheck = validateBotProtectionToken({
+      enabled: turnstileEnabled,
+      ready: botProtectionReady,
+      token: turnstileToken,
+      t,
+    });
+    if (!bpCheck.ok) {
+      showInfo(bpCheck.message);
       return;
     }
     setDisableButton(true);
@@ -184,6 +194,7 @@ const PasswordResetForm = () => {
                 capApiEndpoint={capApiEndpoint}
                 onVerify={(token) => setTurnstileToken(token)}
                 onExpire={() => setTurnstileToken('')}
+                onReady={() => setBotProtectionReady(true)}
                 className='mt-6'
               />
             )}
