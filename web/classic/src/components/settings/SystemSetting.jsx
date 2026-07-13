@@ -230,7 +230,10 @@ const SystemSetting = () => {
       } else {
         newInputs.BotProtectionEnabled = toBoolean(newInputs.BotProtectionEnabled);
       }
-      if (!newInputs.BotProtectionProvider) {
+      if (
+        newInputs.BotProtectionProvider !== 'capjs' &&
+        newInputs.BotProtectionProvider !== 'turnstile'
+      ) {
         newInputs.BotProtectionProvider = capOn
           ? 'capjs'
           : turnOn
@@ -1696,7 +1699,7 @@ const SystemSetting = () => {
                   <Row
                     gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
                   >
-                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                    <Col xs={24} sm={24} md={24} lg={24} xl={24}>
                       <Form.Checkbox
                         field='BotProtectionEnabled'
                         noLabel
@@ -1707,12 +1710,24 @@ const SystemSetting = () => {
                         {t('Enable bot protection')}
                       </Form.Checkbox>
                     </Col>
-                    {inputs.BotProtectionEnabled ? (
+                  </Row>
+                  {inputs.BotProtectionEnabled ? (
+                    <Row
+                      gutter={{
+                        xs: 8,
+                        sm: 16,
+                        md: 24,
+                        lg: 24,
+                        xl: 24,
+                        xxl: 24,
+                      }}
+                      style={{ marginTop: 16 }}
+                    >
                       <Col xs={24} sm={24} md={12} lg={12} xl={12}>
                         <Form.Select
                           field='BotProtectionProvider'
                           label={t('Bot protection provider')}
-                          style={{ width: '100%' }}
+                          placeholder={t('Cap.js (built-in)')}
                           optionList={[
                             {
                               value: 'capjs',
@@ -1723,10 +1738,19 @@ const SystemSetting = () => {
                               label: t('Cloudflare Turnstile'),
                             },
                           ]}
+                          extraText={
+                            inputs.BotProtectionProvider === 'turnstile'
+                              ? t(
+                                  'Use your Cloudflare Turnstile site key and secret key below.',
+                                )
+                              : t(
+                                  'Cap.js runs inside this server. No separate Cap instance is required.',
+                                )
+                          }
                         />
                       </Col>
-                    ) : null}
-                  </Row>
+                    </Row>
+                  ) : null}
                   {inputs.BotProtectionEnabled &&
                   inputs.BotProtectionProvider === 'turnstile' ? (
                     <Row
