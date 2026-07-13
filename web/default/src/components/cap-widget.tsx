@@ -17,9 +17,23 @@
 	For commercial licensing, please contact support@quantumnous.com
 */
 import 'cap-widget'
-import { useEffect, useRef, type RefObject } from 'react'
+import { useEffect, useRef, type CSSProperties, type RefObject } from 'react'
+
+import { cn } from '@/lib/utils'
 
 type CapSolveEvent = CustomEvent<{ token: string }>
+
+/** Maps shadcn theme tokens to Cap widget CSS variables (see capjs.js.org/guide/widget). */
+const capWidgetThemeStyle = {
+  '--cap-background': 'var(--background)',
+  '--cap-border-color': 'var(--border)',
+  '--cap-border-radius': '14px',
+  '--cap-color': 'var(--foreground)',
+  '--cap-checkbox-border': '1px solid var(--ring)',
+  '--cap-checkbox-background': 'var(--secondary)',
+  '--cap-spinner-color': 'var(--primary)',
+  '--cap-spinner-background-color': 'var(--muted)',
+} as CSSProperties
 
 interface CapWidgetProps {
   apiEndpoint: string
@@ -58,10 +72,11 @@ export function CapWidget({
   }, [apiEndpoint, onVerify, onExpire])
 
   return (
-    <cap-widget
-      ref={ref as RefObject<HTMLDivElement>}
-      className={className}
-      data-cap-api-endpoint={apiEndpoint}
-    />
+    <div className={cn(className)} style={capWidgetThemeStyle}>
+      <cap-widget
+        ref={ref as RefObject<HTMLDivElement>}
+        data-cap-api-endpoint={apiEndpoint}
+      />
+    </div>
   )
 }

@@ -20,6 +20,18 @@ For commercial licensing, please contact support@quantumnous.com
 import 'cap-widget';
 import React, { useEffect, useRef } from 'react';
 
+/** Semi Design tokens → Cap widget CSS variables (follows ink-battles / capjs.js.org/guide/widget). */
+const capWidgetThemeStyle = {
+  '--cap-background': 'var(--semi-color-bg-1)',
+  '--cap-border-color': 'var(--semi-color-border)',
+  '--cap-border-radius': '14px',
+  '--cap-color': 'var(--semi-color-text-0)',
+  '--cap-checkbox-border': '1px solid var(--semi-color-border)',
+  '--cap-checkbox-background': 'var(--semi-color-fill-0)',
+  '--cap-spinner-color': 'var(--semi-color-primary)',
+  '--cap-spinner-background-color': 'var(--semi-color-primary-light-default)',
+};
+
 const CapWidget = ({ apiEndpoint, onVerify, onExpire, className }) => {
   const ref = useRef(null);
 
@@ -45,11 +57,9 @@ const CapWidget = ({ apiEndpoint, onVerify, onExpire, className }) => {
   }, [apiEndpoint, onVerify, onExpire]);
 
   return (
-    <cap-widget
-      ref={ref}
-      className={className}
-      data-cap-api-endpoint={apiEndpoint}
-    />
+    <div className={className} style={capWidgetThemeStyle}>
+      <cap-widget ref={ref} data-cap-api-endpoint={apiEndpoint} />
+    </div>
   );
 };
 
