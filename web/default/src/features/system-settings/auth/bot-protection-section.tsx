@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import * as z from 'zod'
@@ -36,6 +36,7 @@ import { Switch } from '@/components/ui/switch'
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
   SelectTrigger,
   SelectValue,
@@ -49,6 +50,11 @@ import {
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
+
+type BotProtectionProvider = 'turnstile' | 'capjs'
+
+const normalizeProvider = (value: unknown): BotProtectionProvider =>
+  value === 'turnstile' ? 'turnstile' : 'capjs'
 
 const botProtectionSchema = z.object({
   BotProtectionEnabled: z.boolean(),
@@ -70,14 +76,24 @@ export function BotProtectionSection({
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
 
+  const formDefaults = useMemo(
+    () => ({
+      ...defaultValues,
+      BotProtectionProvider: normalizeProvider(
+        defaultValues.BotProtectionProvider
+      ),
+    }),
+    [defaultValues]
+  )
+
   const form = useForm<BotProtectionFormValues>({
     resolver: zodResolver(botProtectionSchema),
-    defaultValues,
+    defaultValues: formDefaults,
   })
 
   useEffect(() => {
-    form.reset(defaultValues)
-  }, [defaultValues, form])
+    form.reset(formDefaults)
+  }, [formDefaults, form])
 
   const provider = form.watch('BotProtectionProvider')
   const enabled = form.watch('BotProtectionEnabled')
@@ -155,19 +171,40 @@ export function BotProtectionSection({
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>{t('Bot protection provider')}</FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue />
+                  <FormControl>
+                    <Select
+                      items={[
+                        {
+                          value: 'capjs',
+                          label: t('Cap.js (built-in)'),
+                        },
+                        {
+                          value: 'turnstile',
+                          label: t('Cloudflare Turnstile'),
+                        },
+                      ]}
+                      value={normalizeProvider(field.value)}
+                      onValueChange={(value) =>
+                        field.onChange(normalizeProvider(value))
+                      }
+                    >
+                      <SelectTrigger className='w-full'>
+                        <SelectValue
+                          placeholder={t('Cap.js (built-in)')}
+                        />
                       </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value='turnstile'>
-                        {t('Cloudflare Turnstile')}
-                      </SelectItem>
-                      <SelectItem value='capjs'>{t('Cap.js (built-in)')}</SelectItem>
-                    </SelectContent>
-                  </Select>
+                      <SelectContent alignItemWithTrigger={false}>
+                        <SelectGroup>
+                          <SelectItem value='capjs'>
+                            {t('Cap.js (built-in)')}
+                          </SelectItem>
+                          <SelectItem value='turnstile'>
+                            {t('Cloudflare Turnstile')}
+                          </SelectItem>
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                  </FormControl>
                   <FormDescription>
                     {provider === 'capjs'
                       ? t(

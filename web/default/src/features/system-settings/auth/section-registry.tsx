@@ -24,6 +24,17 @@ import { CustomOAuthSection } from './custom-oauth/custom-oauth-section'
 import { OAuthSection } from './oauth-section'
 import { PasskeySection } from './passkey-section'
 
+const resolveBotProtectionProvider = (
+  provider: string | undefined,
+  capJsEnabled: boolean,
+  turnstileEnabled: boolean
+): 'capjs' | 'turnstile' => {
+  if (provider === 'capjs' || provider === 'turnstile') return provider
+  if (capJsEnabled) return 'capjs'
+  if (turnstileEnabled) return 'turnstile'
+  return 'capjs'
+}
+
 const AUTH_SECTIONS = [
   {
     id: 'basic-auth',
@@ -109,9 +120,11 @@ const AUTH_SECTIONS = [
           BotProtectionEnabled:
             settings.BotProtectionEnabled ??
             (settings.CapJsCheckEnabled || settings.TurnstileCheckEnabled),
-          BotProtectionProvider:
-            settings.BotProtectionProvider ??
-            (settings.CapJsCheckEnabled ? 'capjs' : 'turnstile'),
+          BotProtectionProvider: resolveBotProtectionProvider(
+            settings.BotProtectionProvider,
+            settings.CapJsCheckEnabled,
+            settings.TurnstileCheckEnabled
+          ),
           TurnstileSiteKey: settings.TurnstileSiteKey,
           TurnstileSecretKey: settings.TurnstileSecretKey,
           CapJsSecretKey: settings.CapJsSecretKey,

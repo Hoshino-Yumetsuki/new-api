@@ -64,7 +64,7 @@ const defaultAuthSettings: AuthSettings = {
   CapJsApiEndpoint: '',
   CapJsSecretKey: '',
   BotProtectionEnabled: false,
-  BotProtectionProvider: 'turnstile',
+  BotProtectionProvider: 'capjs',
   'passkey.enabled': false,
   'passkey.rp_display_name': '',
   'passkey.rp_id': '',

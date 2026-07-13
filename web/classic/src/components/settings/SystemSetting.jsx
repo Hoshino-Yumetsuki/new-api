@@ -81,7 +81,7 @@ const SystemSetting = () => {
     TurnstileSiteKey: '',
     TurnstileSecretKey: '',
     BotProtectionEnabled: '',
-    BotProtectionProvider: 'turnstile',
+    BotProtectionProvider: 'capjs',
     CapJsCheckEnabled: '',
     CapJsSecretKey: '',
     RegisterEnabled: '',
@@ -231,7 +231,11 @@ const SystemSetting = () => {
         newInputs.BotProtectionEnabled = toBoolean(newInputs.BotProtectionEnabled);
       }
       if (!newInputs.BotProtectionProvider) {
-        newInputs.BotProtectionProvider = capOn ? 'capjs' : 'turnstile';
+        newInputs.BotProtectionProvider = capOn
+          ? 'capjs'
+          : turnOn
+            ? 'turnstile'
+            : 'capjs';
       }
       setInputs(newInputs);
       setOriginInputs(newInputs);
@@ -625,7 +629,7 @@ const SystemSetting = () => {
 
   const submitBotProtection = async () => {
     const enabled = !!inputs.BotProtectionEnabled;
-    const provider = inputs.BotProtectionProvider || 'turnstile';
+    const provider = inputs.BotProtectionProvider || 'capjs';
     const legacyTurnstile = enabled && provider === 'turnstile';
     const legacyCap = enabled && provider === 'capjs';
 
@@ -1711,12 +1715,12 @@ const SystemSetting = () => {
                           style={{ width: '100%' }}
                           optionList={[
                             {
-                              value: 'turnstile',
-                              label: t('Cloudflare Turnstile'),
-                            },
-                            {
                               value: 'capjs',
                               label: t('Cap.js (built-in)'),
+                            },
+                            {
+                              value: 'turnstile',
+                              label: t('Cloudflare Turnstile'),
                             },
                           ]}
                         />
