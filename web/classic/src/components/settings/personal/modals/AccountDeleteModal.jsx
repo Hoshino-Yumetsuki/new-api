@@ -20,7 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import { Banner, Input, Modal, Typography } from '@douyinfe/semi-ui';
 import { IconDelete, IconUser } from '@douyinfe/semi-icons';
-import Turnstile from 'react-turnstile';
+import BotProtectionField from '../../../auth/BotProtectionField';
 
 const AccountDeleteModal = ({
   t,
@@ -32,6 +32,8 @@ const AccountDeleteModal = ({
   userState,
   turnstileEnabled,
   turnstileSiteKey,
+  botProvider,
+  capApiEndpoint,
   setTurnstileToken,
 }) => {
   return (
@@ -77,14 +79,13 @@ const AccountDeleteModal = ({
         </div>
 
         {turnstileEnabled && (
-          <div className='flex justify-center'>
-            <Turnstile
-              sitekey={turnstileSiteKey}
-              onVerify={(token) => {
-                setTurnstileToken(token);
-              }}
-            />
-          </div>
+          <BotProtectionField
+            provider={botProvider}
+            turnstileSiteKey={turnstileSiteKey}
+            capApiEndpoint={capApiEndpoint}
+            onVerify={(token) => setTurnstileToken(token)}
+            onExpire={() => setTurnstileToken('')}
+          />
         )}
       </div>
     </Modal>

@@ -157,6 +157,11 @@ export type AuthSettings = {
   TurnstileCheckEnabled: boolean
   TurnstileSiteKey: string
   TurnstileSecretKey: string
+  CapJsCheckEnabled: boolean
+  CapJsApiEndpoint: string
+  CapJsSecretKey: string
+  BotProtectionEnabled: boolean
+  BotProtectionProvider: 'turnstile' | 'capjs'
   'passkey.enabled': boolean
   'passkey.rp_display_name': string
   'passkey.rp_id': string

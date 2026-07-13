@@ -106,9 +106,15 @@ const AUTH_SECTIONS = [
     build: (settings: AuthSettings) => (
       <BotProtectionSection
         defaultValues={{
-          TurnstileCheckEnabled: settings.TurnstileCheckEnabled,
+          BotProtectionEnabled:
+            settings.BotProtectionEnabled ??
+            (settings.CapJsCheckEnabled || settings.TurnstileCheckEnabled),
+          BotProtectionProvider:
+            settings.BotProtectionProvider ??
+            (settings.CapJsCheckEnabled ? 'capjs' : 'turnstile'),
           TurnstileSiteKey: settings.TurnstileSiteKey,
           TurnstileSecretKey: settings.TurnstileSecretKey,
+          CapJsSecretKey: settings.CapJsSecretKey,
         }}
       />
     ),

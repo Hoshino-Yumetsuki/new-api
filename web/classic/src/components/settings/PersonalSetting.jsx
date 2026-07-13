@@ -30,6 +30,7 @@ import {
   buildRegistrationResult,
   isPasskeySupported,
   setUserData,
+  getBotProtectionFromStatus,
 } from '../../helpers';
 import { UserContext } from '../../context/User';
 import { Modal } from '@douyinfe/semi-ui';
@@ -69,6 +70,8 @@ const PersonalSetting = () => {
   const [showAccountDeleteModal, setShowAccountDeleteModal] = useState(false);
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
+  const [capApiEndpoint, setCapApiEndpoint] = useState('');
+  const [botProvider, setBotProvider] = useState(null);
   const [turnstileToken, setTurnstileToken] = useState('');
   const [loading, setLoading] = useState(false);
   const [disableButton, setDisableButton] = useState(false);
@@ -130,13 +133,11 @@ const PersonalSetting = () => {
     if (saved) {
       const parsed = JSON.parse(saved);
       setStatus(parsed);
-      if (parsed.turnstile_check) {
-        setTurnstileEnabled(true);
-        setTurnstileSiteKey(parsed.turnstile_site_key);
-      } else {
-        setTurnstileEnabled(false);
-        setTurnstileSiteKey('');
-      }
+      const bp = getBotProtectionFromStatus(parsed);
+      setTurnstileEnabled(bp.enabled);
+      setBotProvider(bp.provider);
+      setTurnstileSiteKey(bp.turnstileSiteKey);
+      setCapApiEndpoint(bp.capApiEndpoint);
     }
     // Always refresh status from server to avoid stale flags (e.g., admin just enabled OAuth)
     (async () => {
@@ -146,13 +147,11 @@ const PersonalSetting = () => {
         if (success && data) {
           setStatus(data);
           setStatusData(data);
-          if (data.turnstile_check) {
-            setTurnstileEnabled(true);
-            setTurnstileSiteKey(data.turnstile_site_key);
-          } else {
-            setTurnstileEnabled(false);
-            setTurnstileSiteKey('');
-          }
+          const bp = getBotProtectionFromStatus(data);
+          setTurnstileEnabled(bp.enabled);
+          setBotProvider(bp.provider);
+          setTurnstileSiteKey(bp.turnstileSiteKey);
+          setCapApiEndpoint(bp.capApiEndpoint);
         }
       } catch (e) {
         // ignore and keep local status
@@ -612,6 +611,8 @@ const PersonalSetting = () => {
         countdown={countdown}
         turnstileEnabled={turnstileEnabled}
         turnstileSiteKey={turnstileSiteKey}
+        botProvider={botProvider}
+        capApiEndpoint={capApiEndpoint}
         setTurnstileToken={setTurnstileToken}
       />
 
@@ -635,6 +636,8 @@ const PersonalSetting = () => {
         userState={userState}
         turnstileEnabled={turnstileEnabled}
         turnstileSiteKey={turnstileSiteKey}
+        botProvider={botProvider}
+        capApiEndpoint={capApiEndpoint}
         setTurnstileToken={setTurnstileToken}
       />
 
@@ -647,6 +650,8 @@ const PersonalSetting = () => {
         changePassword={changePassword}
         turnstileEnabled={turnstileEnabled}
         turnstileSiteKey={turnstileSiteKey}
+        botProvider={botProvider}
+        capApiEndpoint={capApiEndpoint}
         setTurnstileToken={setTurnstileToken}
       />
 

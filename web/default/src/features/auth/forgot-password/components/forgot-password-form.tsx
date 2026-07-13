@@ -24,7 +24,6 @@ import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import type { z } from 'zod'
 
-import { Turnstile } from '@/components/turnstile'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -36,6 +35,7 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { sendPasswordResetEmail } from '@/features/auth/api'
+import { BotProtectionField } from '@/features/auth/components/bot-protection-field'
 import {
   forgotPasswordFormSchema,
   PASSWORD_RESET_COUNTDOWN,
@@ -53,7 +53,9 @@ export function ForgotPasswordForm({
 
   const {
     isTurnstileEnabled,
+    provider,
     turnstileSiteKey,
+    capApiEndpoint,
     turnstileToken,
     setTurnstileToken,
     validateTurnstile,
@@ -111,6 +113,17 @@ export function ForgotPasswordForm({
           )}
         />
 
+        {isTurnstileEnabled && (
+          <BotProtectionField
+            provider={provider}
+            turnstileSiteKey={turnstileSiteKey}
+            capApiEndpoint={capApiEndpoint}
+            onVerify={setTurnstileToken}
+            onExpire={() => setTurnstileToken('')}
+            className='py-1'
+          />
+        )}
+
         <Button
           type='submit'
           className='mt-2'
@@ -121,15 +134,6 @@ export function ForgotPasswordForm({
             : t('Send reset email')}
           {isLoading ? <Loader2 className='animate-spin' /> : <ArrowRight />}
         </Button>
-
-        {isTurnstileEnabled && (
-          <div className='mt-2'>
-            <Turnstile
-              siteKey={turnstileSiteKey}
-              onVerify={setTurnstileToken}
-            />
-          </div>
-        )}
       </form>
     </Form>
   )

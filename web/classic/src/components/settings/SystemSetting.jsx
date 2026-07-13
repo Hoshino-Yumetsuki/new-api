@@ -80,6 +80,10 @@ const SystemSetting = () => {
     TurnstileCheckEnabled: '',
     TurnstileSiteKey: '',
     TurnstileSecretKey: '',
+    BotProtectionEnabled: '',
+    BotProtectionProvider: 'turnstile',
+    CapJsCheckEnabled: '',
+    CapJsSecretKey: '',
     RegisterEnabled: '',
     'passkey.enabled': '',
     'passkey.rp_display_name': '',
@@ -181,6 +185,8 @@ const SystemSetting = () => {
           case 'TelegramOAuthEnabled':
           case 'RegisterEnabled':
           case 'TurnstileCheckEnabled':
+          case 'CapJsCheckEnabled':
+          case 'BotProtectionEnabled':
           case 'EmailDomainRestrictionEnabled':
           case 'EmailAliasRestrictionEnabled':
           case 'SMTPSSLEnabled':
@@ -217,6 +223,16 @@ const SystemSetting = () => {
         }
         newInputs[item.key] = item.value;
       });
+      const capOn = !!newInputs.CapJsCheckEnabled;
+      const turnOn = !!newInputs.TurnstileCheckEnabled;
+      if (typeof newInputs.BotProtectionEnabled === 'undefined' || newInputs.BotProtectionEnabled === '') {
+        newInputs.BotProtectionEnabled = capOn || turnOn;
+      } else {
+        newInputs.BotProtectionEnabled = toBoolean(newInputs.BotProtectionEnabled);
+      }
+      if (!newInputs.BotProtectionProvider) {
+        newInputs.BotProtectionProvider = capOn ? 'capjs' : 'turnstile';
+      }
       setInputs(newInputs);
       setOriginInputs(newInputs);
       // 同步模式布尔到本地状态
@@ -291,6 +307,7 @@ const SystemSetting = () => {
         newInputs[opt.key] = opt.value;
       });
       setInputs(newInputs);
+      setOriginInputs(newInputs);
     } catch (error) {
       showError(t('更新失败'));
     }
@@ -606,14 +623,23 @@ const SystemSetting = () => {
     await updateOptions(options);
   };
 
-  const submitTurnstile = async () => {
-    const options = [];
+  const submitBotProtection = async () => {
+    const enabled = !!inputs.BotProtectionEnabled;
+    const provider = inputs.BotProtectionProvider || 'turnstile';
+    const legacyTurnstile = enabled && provider === 'turnstile';
+    const legacyCap = enabled && provider === 'capjs';
 
-    if (originInputs['TurnstileSiteKey'] !== inputs.TurnstileSiteKey) {
-      options.push({ key: 'TurnstileSiteKey', value: inputs.TurnstileSiteKey });
-    }
+    const options = [
+      { key: 'BotProtectionEnabled', value: enabled },
+      { key: 'BotProtectionProvider', value: provider },
+      { key: 'TurnstileCheckEnabled', value: legacyTurnstile },
+      { key: 'CapJsCheckEnabled', value: legacyCap },
+      { key: 'CapJsApiEndpoint', value: '' },
+      { key: 'TurnstileSiteKey', value: inputs.TurnstileSiteKey ?? '' },
+    ];
+
     if (
-      originInputs['TurnstileSecretKey'] !== inputs.TurnstileSecretKey &&
+      originInputs.TurnstileSecretKey !== inputs.TurnstileSecretKey &&
       inputs.TurnstileSecretKey !== ''
     ) {
       options.push({
@@ -621,10 +647,17 @@ const SystemSetting = () => {
         value: inputs.TurnstileSecretKey,
       });
     }
-
-    if (options.length > 0) {
-      await updateOptions(options);
+    if (
+      originInputs.CapJsSecretKey !== inputs.CapJsSecretKey &&
+      inputs.CapJsSecretKey !== ''
+    ) {
+      options.push({
+        key: 'CapJsSecretKey',
+        value: inputs.CapJsSecretKey,
+      });
     }
+
+    await updateOptions(options);
   };
 
   const submitLinuxDOOAuth = async () => {
@@ -1060,15 +1093,6 @@ const SystemSetting = () => {
                         }
                       >
                         {t('允许新用户注册')}
-                      </Form.Checkbox>
-                      <Form.Checkbox
-                        field='TurnstileCheckEnabled'
-                        noLabel
-                        onChange={(e) =>
-                          handleCheckboxChange('TurnstileCheckEnabled', e)
-                        }
-                      >
-                        {t('允许 Turnstile 用户校验')}
                       </Form.Checkbox>
                     </Col>
                     <Col xs={24} sm={24} md={12} lg={12} xl={12}>
@@ -1659,28 +1683,100 @@ const SystemSetting = () => {
               </Card>
 
               <Card>
-                <Form.Section text={t('配置 Turnstile')}>
-                  <Text>{t('用以支持用户校验')}</Text>
+                <Form.Section text={t('Bot Protection')}>
+                  <Text>
+                    {t(
+                      'Require human verification on login, registration, and password recovery',
+                    )}
+                  </Text>
                   <Row
                     gutter={{ xs: 8, sm: 16, md: 24, lg: 24, xl: 24, xxl: 24 }}
                   >
                     <Col xs={24} sm={24} md={12} lg={12} xl={12}>
-                      <Form.Input
-                        field='TurnstileSiteKey'
-                        label={t('Turnstile Site Key')}
-                      />
+                      <Form.Checkbox
+                        field='BotProtectionEnabled'
+                        noLabel
+                        onChange={(e) =>
+                          handleCheckboxChange('BotProtectionEnabled', e)
+                        }
+                      >
+                        {t('Enable bot protection')}
+                      </Form.Checkbox>
                     </Col>
-                    <Col xs={24} sm={24} md={12} lg={12} xl={12}>
-                      <Form.Input
-                        field='TurnstileSecretKey'
-                        label={t('Turnstile Secret Key')}
-                        type='password'
-                        placeholder={t('敏感信息不会发送到前端显示')}
-                      />
-                    </Col>
+                    {inputs.BotProtectionEnabled ? (
+                      <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                        <Form.Select
+                          field='BotProtectionProvider'
+                          label={t('Bot protection provider')}
+                          style={{ width: '100%' }}
+                          optionList={[
+                            {
+                              value: 'turnstile',
+                              label: t('Cloudflare Turnstile'),
+                            },
+                            {
+                              value: 'capjs',
+                              label: t('Cap.js (built-in)'),
+                            },
+                          ]}
+                        />
+                      </Col>
+                    ) : null}
                   </Row>
-                  <Button onClick={submitTurnstile}>
-                    {t('保存 Turnstile 设置')}
+                  {inputs.BotProtectionEnabled &&
+                  inputs.BotProtectionProvider === 'turnstile' ? (
+                    <Row
+                      gutter={{
+                        xs: 8,
+                        sm: 16,
+                        md: 24,
+                        lg: 24,
+                        xl: 24,
+                        xxl: 24,
+                      }}
+                    >
+                      <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                        <Form.Input
+                          field='TurnstileSiteKey'
+                          label={t('Site Key')}
+                        />
+                      </Col>
+                      <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                        <Form.Input
+                          field='TurnstileSecretKey'
+                          label={t('Secret Key')}
+                          type='password'
+                          placeholder={t('敏感信息不会发送到前端显示')}
+                        />
+                      </Col>
+                    </Row>
+                  ) : null}
+                  {inputs.BotProtectionEnabled &&
+                  inputs.BotProtectionProvider === 'capjs' ? (
+                    <Row
+                      gutter={{
+                        xs: 8,
+                        sm: 16,
+                        md: 24,
+                        lg: 24,
+                        xl: 24,
+                        xxl: 24,
+                      }}
+                    >
+                      <Col xs={24} sm={24} md={12} lg={12} xl={12}>
+                        <Form.Input
+                          field='CapJsSecretKey'
+                          label={t('Cap.js secret key')}
+                          type='password'
+                          placeholder={t(
+                            'Optional. At least 16 characters. Leave empty to use server default.',
+                          )}
+                        />
+                      </Col>
+                    </Row>
+                  ) : null}
+                  <Button onClick={submitBotProtection}>
+                    {t('保存人机验证设置')}
                   </Button>
                 </Form.Section>
               </Card>

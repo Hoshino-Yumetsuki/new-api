@@ -22,23 +22,42 @@ import { toast } from 'sonner'
 
 import { useStatus } from '@/hooks/use-status'
 
+export type BotProtectionProvider = 'turnstile' | 'capjs' | null
+
 /**
- * Hook for managing Turnstile verification
+ * Hook for managing Turnstile or Cap.js bot protection on auth forms.
  */
 export function useTurnstile() {
   const { status } = useStatus()
   const [turnstileToken, setTurnstileToken] = useState('')
 
-  const isTurnstileEnabled = !!(
-    status?.turnstile_check && status?.turnstile_site_key
-  )
-  const turnstileSiteKey = status?.turnstile_site_key || ''
+  const botEnabled =
+    status?.bot_protection_enabled === true ||
+    !!(status?.capjs_check || status?.turnstile_check)
+  const providerRaw = status?.bot_protection_provider as string | undefined
+  const capApiEndpoint = (status?.capjs_api_endpoint as string | undefined) || ''
+  const useCap =
+    providerRaw === 'capjs' ||
+    (!providerRaw && status?.capjs_check && capApiEndpoint.trim().length > 0)
+  const useTurnstile =
+    providerRaw === 'turnstile' ||
+    (!providerRaw &&
+      !status?.capjs_check &&
+      !!(status?.turnstile_check && status?.turnstile_site_key))
 
-  /**
-   * Validate if turnstile is ready when required
-   */
+  const isCapJsEnabled = botEnabled && useCap && capApiEndpoint.trim().length > 0
+  const isTurnstileEnabled =
+    botEnabled && useTurnstile && !!(status?.turnstile_site_key as string)
+  const isBotProtectionEnabled = isCapJsEnabled || isTurnstileEnabled
+  const provider: BotProtectionProvider = isCapJsEnabled
+    ? 'capjs'
+    : isTurnstileEnabled
+      ? 'turnstile'
+      : null
+  const turnstileSiteKey = (status?.turnstile_site_key as string) || ''
+
   const validateTurnstile = (): boolean => {
-    if (isTurnstileEnabled && !turnstileToken) {
+    if (isBotProtectionEnabled && !turnstileToken) {
       toast.info(
         i18next.t('Please wait a moment, human check is initializing...')
       )
@@ -48,8 +67,11 @@ export function useTurnstile() {
   }
 
   return {
-    isTurnstileEnabled,
+    isTurnstileEnabled: isBotProtectionEnabled,
+    isBotProtectionEnabled,
+    provider,
     turnstileSiteKey,
+    capApiEndpoint,
     turnstileToken,
     setTurnstileToken,
     validateTurnstile,

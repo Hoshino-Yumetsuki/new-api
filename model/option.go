@@ -44,6 +44,9 @@ func InitOptionMap() {
 	common.OptionMap["TelegramOAuthEnabled"] = strconv.FormatBool(common.TelegramOAuthEnabled)
 	common.OptionMap["WeChatAuthEnabled"] = strconv.FormatBool(common.WeChatAuthEnabled)
 	common.OptionMap["TurnstileCheckEnabled"] = strconv.FormatBool(common.TurnstileCheckEnabled)
+	common.OptionMap["CapJsCheckEnabled"] = strconv.FormatBool(common.CapJsCheckEnabled)
+	common.OptionMap["BotProtectionEnabled"] = strconv.FormatBool(common.BotProtectionEnabled)
+	common.OptionMap["BotProtectionProvider"] = common.BotProtectionProvider
 	common.OptionMap["RegisterEnabled"] = strconv.FormatBool(common.RegisterEnabled)
 	common.OptionMap["AutomaticDisableChannelEnabled"] = strconv.FormatBool(common.AutomaticDisableChannelEnabled)
 	common.OptionMap["AutomaticEnableChannelEnabled"] = strconv.FormatBool(common.AutomaticEnableChannelEnabled)
@@ -130,6 +133,8 @@ func InitOptionMap() {
 	common.OptionMap["WeChatAccountQRCodeImageURL"] = ""
 	common.OptionMap["TurnstileSiteKey"] = ""
 	common.OptionMap["TurnstileSecretKey"] = ""
+	common.OptionMap["CapJsApiEndpoint"] = ""
+	common.OptionMap["CapJsSecretKey"] = ""
 	common.OptionMap["QuotaForNewUser"] = strconv.Itoa(common.QuotaForNewUser)
 	common.OptionMap["QuotaForInviter"] = strconv.Itoa(common.QuotaForInviter)
 	common.OptionMap["QuotaForInvitee"] = strconv.Itoa(common.QuotaForInvitee)
@@ -194,6 +199,7 @@ func loadOptionsFromDatabase() {
 			common.SysLog("failed to update option map: " + err.Error())
 		}
 	}
+	common.MigrateBotProtectionFromLegacy()
 }
 
 func SyncOptions(frequency int) {
@@ -294,8 +300,27 @@ func updateOptionMap(key string, value string) (err error) {
 			common.WeChatAuthEnabled = boolValue
 		case "TelegramOAuthEnabled":
 			common.TelegramOAuthEnabled = boolValue
-		case "TurnstileCheckEnabled":
-			common.TurnstileCheckEnabled = boolValue
+			case "TurnstileCheckEnabled":
+				common.TurnstileCheckEnabled = boolValue
+				if boolValue {
+					common.BotProtectionEnabled = true
+					common.BotProtectionProvider = common.BotProtectionProviderTurnstile
+					common.CapJsCheckEnabled = false
+				} else if !common.CapJsCheckEnabled {
+					common.BotProtectionEnabled = false
+				}
+			case "CapJsCheckEnabled":
+				common.CapJsCheckEnabled = boolValue
+				if boolValue {
+					common.BotProtectionEnabled = true
+					common.BotProtectionProvider = common.BotProtectionProviderCapJs
+					common.TurnstileCheckEnabled = false
+				} else if !common.TurnstileCheckEnabled {
+					common.BotProtectionEnabled = false
+				}
+			case "BotProtectionEnabled":
+				common.BotProtectionEnabled = boolValue
+				common.SyncBotProtectionLegacyFlags()
 		case "RegisterEnabled":
 			common.RegisterEnabled = boolValue
 		case "EmailDomainRestrictionEnabled":
@@ -500,6 +525,13 @@ func updateOptionMap(key string, value string) (err error) {
 		common.TurnstileSiteKey = value
 	case "TurnstileSecretKey":
 		common.TurnstileSecretKey = value
+	case "CapJsApiEndpoint":
+		common.CapJsApiEndpoint = value
+		case "CapJsSecretKey":
+			common.CapJsSecretKey = value
+		case "BotProtectionProvider":
+			common.BotProtectionProvider = value
+			common.SyncBotProtectionLegacyFlags()
 	case "QuotaForNewUser":
 		common.QuotaForNewUser, _ = strconv.Atoi(value)
 	case "QuotaForInviter":

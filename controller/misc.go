@@ -72,6 +72,10 @@ func GetStatus(c *gin.Context) {
 		"server_address":              system_setting.ServerAddress,
 		"turnstile_check":             common.TurnstileCheckEnabled,
 		"turnstile_site_key":          common.TurnstileSiteKey,
+		"capjs_check":                 common.CapJsCheckEnabled,
+		"capjs_api_endpoint":          common.EffectiveCapJsAPIEndpoint(),
+		"bot_protection_enabled":      common.BotProtectionActive(),
+		"bot_protection_provider":     common.BotProtectionProvider,
 		"docs_link":                   operation_setting.GetGeneralSetting().DocsLink,
 		"quota_per_unit":              common.QuotaPerUnit,
 		// 兼容旧前端：保留 display_in_currency，同时提供新的 quota_display_type

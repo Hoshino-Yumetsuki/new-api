@@ -33,6 +33,13 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 import {
   SettingsForm,
@@ -44,9 +51,11 @@ import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
 
 const botProtectionSchema = z.object({
-  TurnstileCheckEnabled: z.boolean(),
+  BotProtectionEnabled: z.boolean(),
+  BotProtectionProvider: z.enum(['turnstile', 'capjs']),
   TurnstileSiteKey: z.string().optional(),
   TurnstileSecretKey: z.string().optional(),
+  CapJsSecretKey: z.string().optional(),
 })
 
 type BotProtectionFormValues = z.infer<typeof botProtectionSchema>
@@ -70,14 +79,41 @@ export function BotProtectionSection({
     form.reset(defaultValues)
   }, [defaultValues, form])
 
-  const onSubmit = async (data: BotProtectionFormValues) => {
-    const updates = Object.entries(data).filter(
-      ([key, value]) =>
-        value !== defaultValues[key as keyof BotProtectionFormValues]
-    )
+  const provider = form.watch('BotProtectionProvider')
+  const enabled = form.watch('BotProtectionEnabled')
 
-    for (const [key, value] of updates) {
-      await updateOption.mutateAsync({ key, value: value ?? '' })
+  const onSubmit = async (data: BotProtectionFormValues) => {
+    const legacyTurnstile =
+      data.BotProtectionEnabled && data.BotProtectionProvider === 'turnstile'
+    const legacyCap =
+      data.BotProtectionEnabled && data.BotProtectionProvider === 'capjs'
+
+    const rows: Array<{ key: string; value: string | boolean }> = [
+      { key: 'BotProtectionEnabled', value: data.BotProtectionEnabled },
+      { key: 'BotProtectionProvider', value: data.BotProtectionProvider },
+      { key: 'TurnstileCheckEnabled', value: legacyTurnstile },
+      { key: 'CapJsCheckEnabled', value: legacyCap },
+      { key: 'CapJsApiEndpoint', value: '' },
+      { key: 'TurnstileSiteKey', value: data.TurnstileSiteKey ?? '' },
+      { key: 'TurnstileSecretKey', value: data.TurnstileSecretKey ?? '' },
+      { key: 'CapJsSecretKey', value: data.CapJsSecretKey ?? '' },
+    ]
+
+    for (const { key, value } of rows) {
+      const prev = defaultValues[key as keyof BotProtectionFormValues]
+      const comparablePrev =
+        key === 'TurnstileCheckEnabled'
+          ? defaultValues.BotProtectionEnabled &&
+            defaultValues.BotProtectionProvider === 'turnstile'
+          : key === 'CapJsCheckEnabled'
+            ? defaultValues.BotProtectionEnabled &&
+              defaultValues.BotProtectionProvider === 'capjs'
+            : key === 'CapJsApiEndpoint'
+              ? ''
+              : prev
+      if (value !== comparablePrev) {
+        await updateOption.mutateAsync({ key, value })
+      }
     }
   }
 
@@ -91,14 +127,14 @@ export function BotProtectionSection({
           />
           <FormField
             control={form.control}
-            name='TurnstileCheckEnabled'
+            name='BotProtectionEnabled'
             render={({ field }) => (
               <SettingsSwitchItem>
                 <SettingsSwitchContent>
-                  <FormLabel>{t('Enable Turnstile')}</FormLabel>
+                  <FormLabel>{t('Enable bot protection')}</FormLabel>
                   <FormDescription>
                     {t(
-                      'Protect login and registration with Cloudflare Turnstile'
+                      'Require human verification on login, registration, and password recovery'
                     )}
                   </FormDescription>
                 </SettingsSwitchContent>
@@ -112,42 +148,108 @@ export function BotProtectionSection({
             )}
           />
 
-          <FormField
-            control={form.control}
-            name='TurnstileSiteKey'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('Site Key')}</FormLabel>
-                <FormControl>
-                  <Input
-                    placeholder={t('Your Turnstile site key')}
-                    autoComplete='off'
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {enabled ? (
+            <FormField
+              control={form.control}
+              name='BotProtectionProvider'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Bot protection provider')}</FormLabel>
+                  <Select value={field.value} onValueChange={field.onChange}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value='turnstile'>
+                        {t('Cloudflare Turnstile')}
+                      </SelectItem>
+                      <SelectItem value='capjs'>{t('Cap.js (built-in)')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormDescription>
+                    {provider === 'capjs'
+                      ? t(
+                          'Cap.js runs inside this server. No separate Cap instance is required.'
+                        )
+                      : t(
+                          'Use your Cloudflare Turnstile site key and secret key below.'
+                        )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          ) : null}
 
-          <FormField
-            control={form.control}
-            name='TurnstileSecretKey'
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>{t('Secret Key')}</FormLabel>
-                <FormControl>
-                  <Input
-                    type='password'
-                    placeholder={t('Your Turnstile secret key')}
-                    autoComplete='new-password'
-                    {...field}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
+          {enabled && provider === 'turnstile' ? (
+            <>
+              <FormField
+                control={form.control}
+                name='TurnstileSiteKey'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Site Key')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder={t('Your Turnstile site key')}
+                        autoComplete='off'
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name='TurnstileSecretKey'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{t('Secret Key')}</FormLabel>
+                    <FormControl>
+                      <Input
+                        type='password'
+                        placeholder={t('Your Turnstile secret key')}
+                        autoComplete='new-password'
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </>
+          ) : null}
+
+          {enabled && provider === 'capjs' ? (
+            <FormField
+              control={form.control}
+              name='CapJsSecretKey'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Cap.js secret key')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='password'
+                      placeholder={t(
+                        'Optional. At least 16 characters. Leave empty to use server default.'
+                      )}
+                      autoComplete='new-password'
+                      {...field}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Used for Cap.js siteverify. Built-in widget API is always served at /api/cap/builtin/.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+          ) : null}
         </SettingsForm>
       </Form>
     </SettingsSection>

@@ -3653,6 +3653,18 @@
     "默认折叠侧边栏": "サイドバーをデフォルトで折りたたむ",
     "默认测试模型": "デフォルトテストモデル",
     "默认用户消息": "こんにちは",
-    "默认补全倍率": "デフォルト補完倍率"
+    "默认补全倍率": "デフォルト補完倍率",
+    "请稍后几秒重试，人机验证正在初始化...": "しばらくお待ちください。人間確認を初期化しています...",
+    "Bot Protection": "ボット保護",
+    "Require human verification on login, registration, and password recovery": "ログイン、登録、パスワード再設定で人間確認を必須にする",
+    "Enable bot protection": "ボット保護を有効にする",
+    "Bot protection provider": "ボット保護プロバイダー",
+    "Cloudflare Turnstile": "Cloudflare Turnstile",
+    "Cap.js (built-in)": "Cap.js（組み込み）",
+    "Site Key": "サイトキー",
+    "Secret Key": "シークレットキー",
+    "Cap.js secret key": "Cap.js シークレットキー",
+    "Optional. At least 16 characters. Leave empty to use server default.": "任意。16文字以上。空欄の場合はサーバーのデフォルトを使用します。",
+    "保存人机验证设置": "ボット保護設定を保存"
   }
 }

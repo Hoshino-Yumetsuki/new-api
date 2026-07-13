@@ -2639,6 +2639,18 @@
     "并确认自行承担部署": "并确认自行承担部署",
     "运营和收费行为产生的法律责任": "运营和收费行为产生的法律责任",
     "，": "，",
-    "、": "、"
+    "、": "、",
+    "请稍后几秒重试，人机验证正在初始化...": "请稍后几秒重试，人机验证正在初始化...",
+    "Bot Protection": "机器人保护",
+    "Require human verification on login, registration, and password recovery": "在登录、注册与找回密码时要求人机验证",
+    "Enable bot protection": "启用人机验证",
+    "Bot protection provider": "人机验证方案",
+    "Cloudflare Turnstile": "Cloudflare Turnstile",
+    "Cap.js (built-in)": "Cap.js（内置）",
+    "Site Key": "站点密钥",
+    "Secret Key": "密钥",
+    "Cap.js secret key": "Cap.js 密钥",
+    "Optional. At least 16 characters. Leave empty to use server default.": "可选。至少 16 个字符。留空则使用服务器默认值。",
+    "保存人机验证设置": "保存人机验证设置"
   }
 }

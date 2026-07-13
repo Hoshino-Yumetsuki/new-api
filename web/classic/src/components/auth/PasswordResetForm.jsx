@@ -25,8 +25,9 @@ import {
   showInfo,
   showSuccess,
   getSystemName,
+  getBotProtectionFromStatus,
 } from '../../helpers';
-import Turnstile from 'react-turnstile';
+import BotProtectionField from './BotProtectionField';
 import { Button, Card, Form, Typography } from '@douyinfe/semi-ui';
 import { IconMail } from '@douyinfe/semi-icons';
 import { Link } from 'react-router-dom';
@@ -44,6 +45,8 @@ const PasswordResetForm = () => {
   const [loading, setLoading] = useState(false);
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
+  const [capApiEndpoint, setCapApiEndpoint] = useState('');
+  const [botProvider, setBotProvider] = useState(null);
   const [turnstileToken, setTurnstileToken] = useState('');
   const [disableButton, setDisableButton] = useState(false);
   const [countdown, setCountdown] = useState(30);
@@ -55,10 +58,11 @@ const PasswordResetForm = () => {
     let status = localStorage.getItem('status');
     if (status) {
       status = JSON.parse(status);
-      if (status.turnstile_check) {
-        setTurnstileEnabled(true);
-        setTurnstileSiteKey(status.turnstile_site_key);
-      }
+      const bp = getBotProtectionFromStatus(status);
+      setTurnstileEnabled(bp.enabled);
+      setBotProvider(bp.provider);
+      setTurnstileSiteKey(bp.turnstileSiteKey);
+      setCapApiEndpoint(bp.capApiEndpoint);
     }
   }, []);
 
@@ -85,7 +89,7 @@ const PasswordResetForm = () => {
       return;
     }
     if (turnstileEnabled && turnstileToken === '') {
-      showInfo(t('请稍后几秒重试，Turnstile 正在检查用户环境！'));
+      showInfo(t('请稍后几秒重试，人机验证正在初始化...'));
       return;
     }
     setDisableButton(true);
@@ -174,14 +178,14 @@ const PasswordResetForm = () => {
             </Card>
 
             {turnstileEnabled && (
-              <div className='flex justify-center mt-6'>
-                <Turnstile
-                  sitekey={turnstileSiteKey}
-                  onVerify={(token) => {
-                    setTurnstileToken(token);
-                  }}
-                />
-              </div>
+              <BotProtectionField
+                provider={botProvider}
+                turnstileSiteKey={turnstileSiteKey}
+                capApiEndpoint={capApiEndpoint}
+                onVerify={(token) => setTurnstileToken(token)}
+                onExpire={() => setTurnstileToken('')}
+                className='mt-6'
+              />
             )}
           </div>
         </div>

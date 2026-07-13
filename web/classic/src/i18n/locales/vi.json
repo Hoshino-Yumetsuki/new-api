@@ -4218,6 +4218,18 @@
     "默认折叠侧边栏": "Mặc định thu gọn thanh bên",
     "默认测试模型": "Mô hình kiểm tra mặc định",
     "默认用户消息": "Xin chào",
-    "默认补全倍率": "Tỷ lệ hoàn thành mặc định"
+    "默认补全倍率": "Tỷ lệ hoàn thành mặc định",
+    "请稍后几秒重试，人机验证正在初始化...": "Vui lòng đợi vài giây, xác minh người đang khởi tạo...",
+    "Bot Protection": "Bảo vệ bot",
+    "Require human verification on login, registration, and password recovery": "Yêu cầu xác minh người khi đăng nhập, đăng ký và khôi phục mật khẩu",
+    "Enable bot protection": "Bật bảo vệ bot",
+    "Bot protection provider": "Nhà cung cấp bảo vệ bot",
+    "Cloudflare Turnstile": "Cloudflare Turnstile",
+    "Cap.js (built-in)": "Cap.js (tích hợp)",
+    "Site Key": "Khóa trang",
+    "Secret Key": "Khóa bí mật",
+    "Cap.js secret key": "Khóa bí mật Cap.js",
+    "Optional. At least 16 characters. Leave empty to use server default.": "Tùy chọn. Ít nhất 16 ký tự. Để trống để dùng mặc định máy chủ.",
+    "保存人机验证设置": "Lưu cài đặt bảo vệ bot"
   }
 }

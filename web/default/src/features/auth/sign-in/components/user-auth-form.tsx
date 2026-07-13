@@ -27,7 +27,6 @@ import type { z } from 'zod'
 
 import { Dialog } from '@/components/dialog'
 import { PasswordInput } from '@/components/password-input'
-import { Turnstile } from '@/components/turnstile'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -40,6 +39,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { login, wechatLoginByCode } from '@/features/auth/api'
+import { BotProtectionField } from '@/features/auth/components/bot-protection-field'
 import { LegalConsent } from '@/features/auth/components/legal-consent'
 import { OAuthProviders } from '@/features/auth/components/oauth-providers'
 import { loginFormSchema } from '@/features/auth/constants'
@@ -81,7 +81,9 @@ export function UserAuthForm({
       true) !== false
   const {
     isTurnstileEnabled,
+    provider,
     turnstileSiteKey,
+    capApiEndpoint,
     turnstileToken,
     setTurnstileToken,
     validateTurnstile,
@@ -372,6 +374,17 @@ export function UserAuthForm({
               )}
             />
 
+            {isTurnstileEnabled && (
+              <BotProtectionField
+                provider={provider}
+                turnstileSiteKey={turnstileSiteKey}
+                capApiEndpoint={capApiEndpoint}
+                onVerify={setTurnstileToken}
+                onExpire={() => setTurnstileToken('')}
+                className='py-1'
+              />
+            )}
+
             {/* Submit Button */}
             <Button
               type='submit'
@@ -381,16 +394,6 @@ export function UserAuthForm({
               {isLoading ? <Loader2 className='animate-spin' /> : <LogIn />}
               {t('Sign in')}
             </Button>
-
-            {/* Turnstile */}
-            {isTurnstileEnabled && (
-              <div className='mt-2'>
-                <Turnstile
-                  siteKey={turnstileSiteKey}
-                  onVerify={setTurnstileToken}
-                />
-              </div>
-            )}
           </>
         )}
 

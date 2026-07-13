@@ -26,7 +26,6 @@ import type { z } from 'zod'
 
 import { Dialog } from '@/components/dialog'
 import { PasswordInput } from '@/components/password-input'
-import { Turnstile } from '@/components/turnstile'
 import { Button } from '@/components/ui/button'
 import {
   Form,
@@ -39,6 +38,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { register, wechatLoginByCode } from '@/features/auth/api'
+import { BotProtectionField } from '@/features/auth/components/bot-protection-field'
 import { LegalConsent } from '@/features/auth/components/legal-consent'
 import { OAuthProviders } from '@/features/auth/components/oauth-providers'
 import { registerFormSchema } from '@/features/auth/constants'
@@ -68,7 +68,9 @@ export function SignUpForm({
   const { status } = useStatus()
   const {
     isTurnstileEnabled,
+    provider,
     turnstileSiteKey,
+    capApiEndpoint,
     turnstileToken,
     setTurnstileToken,
     validateTurnstile,
@@ -335,14 +337,15 @@ export function SignUpForm({
           </>
         )}
 
-        {/* Turnstile */}
         {isTurnstileEnabled && (
-          <div className='mt-2'>
-            <Turnstile
-              siteKey={turnstileSiteKey}
-              onVerify={setTurnstileToken}
-            />
-          </div>
+          <BotProtectionField
+            provider={provider}
+            turnstileSiteKey={turnstileSiteKey}
+            capApiEndpoint={capApiEndpoint}
+            onVerify={setTurnstileToken}
+            onExpire={() => setTurnstileToken('')}
+            className='py-1'
+          />
         )}
 
         <LegalConsent

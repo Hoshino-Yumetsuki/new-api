@@ -32,7 +32,8 @@ import {
   onDiscordOAuthClicked,
   onCustomOAuthClicked,
 } from '../../helpers';
-import Turnstile from 'react-turnstile';
+import BotProtectionField from './BotProtectionField';
+import { getBotProtectionFromStatus } from '../../helpers';
 import {
   Button,
   Card,
@@ -86,6 +87,8 @@ const RegisterForm = () => {
   const [statusState] = useContext(StatusContext);
   const [turnstileEnabled, setTurnstileEnabled] = useState(false);
   const [turnstileSiteKey, setTurnstileSiteKey] = useState('');
+  const [capApiEndpoint, setCapApiEndpoint] = useState('');
+  const [botProvider, setBotProvider] = useState(null);
   const [turnstileToken, setTurnstileToken] = useState('');
   const [showWeChatLoginModal, setShowWeChatLoginModal] = useState(false);
   const [showEmailRegister, setShowEmailRegister] = useState(false);
@@ -145,10 +148,11 @@ const RegisterForm = () => {
 
   useEffect(() => {
     setShowEmailVerification(!!status?.email_verification);
-    if (status?.turnstile_check) {
-      setTurnstileEnabled(true);
-      setTurnstileSiteKey(status.turnstile_site_key);
-    }
+    const bp = getBotProtectionFromStatus(status);
+    setTurnstileEnabled(bp.enabled);
+    setBotProvider(bp.provider);
+    setTurnstileSiteKey(bp.turnstileSiteKey);
+    setCapApiEndpoint(bp.capApiEndpoint);
 
     // 从 status 获取用户协议和隐私政策的启用状态
     setHasUserAgreement(status?.user_agreement_enabled || false);
@@ -184,7 +188,7 @@ const RegisterForm = () => {
 
   const onSubmitWeChatVerificationCode = async () => {
     if (turnstileEnabled && turnstileToken === '') {
-      showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
+      showInfo(t('请稍后几秒重试，人机验证正在初始化...'));
       return;
     }
     setWechatCodeSubmitLoading(true);
@@ -226,7 +230,7 @@ const RegisterForm = () => {
     }
     if (username && password) {
       if (turnstileEnabled && turnstileToken === '') {
-        showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
+        showInfo(t('请稍后几秒重试，人机验证正在初始化...'));
         return;
       }
       setRegisterLoading(true);
@@ -257,7 +261,7 @@ const RegisterForm = () => {
   const sendVerificationCode = async () => {
     if (inputs.email === '') return;
     if (turnstileEnabled && turnstileToken === '') {
-      showInfo('请稍后几秒重试，Turnstile 正在检查用户环境！');
+      showInfo(t('请稍后几秒重试，人机验证正在初始化...'));
       return;
     }
     setVerificationCodeLoading(true);
@@ -676,14 +680,14 @@ const RegisterForm = () => {
                 )}
 
                 {turnstileEnabled && (
-                  <div className='flex justify-center mt-6'>
-                    <Turnstile
-                      sitekey={turnstileSiteKey}
-                      onVerify={(token) => {
-                        setTurnstileToken(token);
-                      }}
-                    />
-                  </div>
+                  <BotProtectionField
+                    provider={botProvider}
+                    turnstileSiteKey={turnstileSiteKey}
+                    capApiEndpoint={capApiEndpoint}
+                    onVerify={(token) => setTurnstileToken(token)}
+                    onExpire={() => setTurnstileToken('')}
+                    className='mt-6'
+                  />
                 )}
 
                 <div className='space-y-2 pt-2'>
@@ -778,14 +782,14 @@ const RegisterForm = () => {
         </Form>
 
         {turnstileEnabled && (
-          <div className='flex justify-center mt-6'>
-            <Turnstile
-              sitekey={turnstileSiteKey}
-              onVerify={(token) => {
-                setTurnstileToken(token);
-              }}
-            />
-          </div>
+          <BotProtectionField
+            provider={botProvider}
+            turnstileSiteKey={turnstileSiteKey}
+            capApiEndpoint={capApiEndpoint}
+            onVerify={(token) => setTurnstileToken(token)}
+            onExpire={() => setTurnstileToken('')}
+            className='mt-6'
+          />
         )}
       </Modal>
     );

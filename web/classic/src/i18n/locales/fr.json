@@ -3684,6 +3684,18 @@
     "默认折叠侧边栏": "Réduire la barre latérale par défaut",
     "默认测试模型": "Modèle de test par défaut",
     "默认用户消息": "Bonjour",
-    "默认补全倍率": "Taux de complétion par défaut"
+    "默认补全倍率": "Taux de complétion par défaut",
+    "请稍后几秒重试，人机验证正在初始化...": "Veuillez patienter, la vérification humaine s'initialise...",
+    "Bot Protection": "Protection anti-bot",
+    "Require human verification on login, registration, and password recovery": "Exiger une vérification humaine à la connexion, l'inscription et la récupération du mot de passe",
+    "Enable bot protection": "Activer la protection anti-bot",
+    "Bot protection provider": "Fournisseur de protection",
+    "Cloudflare Turnstile": "Cloudflare Turnstile",
+    "Cap.js (built-in)": "Cap.js (intégré)",
+    "Site Key": "Clé de site",
+    "Secret Key": "Clé secrète",
+    "Cap.js secret key": "Clé secrète Cap.js",
+    "Optional. At least 16 characters. Leave empty to use server default.": "Facultatif. Au moins 16 caractères. Laissez vide pour la valeur par défaut du serveur.",
+    "保存人机验证设置": "Enregistrer les paramètres anti-bot"
   }
 }

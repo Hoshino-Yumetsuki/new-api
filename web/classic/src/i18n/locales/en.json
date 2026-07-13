@@ -3839,6 +3839,18 @@
     "默认折叠侧边栏": "Default collapse sidebar",
     "默认测试模型": "Default Test Model",
     "默认用户消息": "Default User Message",
-    "默认补全倍率": "Default completion ratio"
+    "默认补全倍率": "Default completion ratio",
+    "请稍后几秒重试，人机验证正在初始化...": "Please wait a moment, human verification is initializing...",
+    "Bot Protection": "Bot Protection",
+    "Require human verification on login, registration, and password recovery": "Require human verification on login, registration, and password recovery",
+    "Enable bot protection": "Enable bot protection",
+    "Bot protection provider": "Bot protection provider",
+    "Cloudflare Turnstile": "Cloudflare Turnstile",
+    "Cap.js (built-in)": "Cap.js (built-in)",
+    "Site Key": "Site Key",
+    "Secret Key": "Secret Key",
+    "Cap.js secret key": "Cap.js secret key",
+    "Optional. At least 16 characters. Leave empty to use server default.": "Optional. At least 16 characters. Leave empty to use server default.",
+    "保存人机验证设置": "Save bot protection settings"
   }
 }

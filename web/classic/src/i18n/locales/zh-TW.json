@@ -3677,6 +3677,18 @@
     "默认折叠侧边栏": "預設摺疊側邊欄",
     "默认测试模型": "預設測試模型",
     "默认用户消息": "你好",
-    "默认补全倍率": "預設補全倍率"
+    "默认补全倍率": "預設補全倍率",
+    "请稍后几秒重试，人机验证正在初始化...": "請稍後幾秒重試，人機驗證正在初始化...",
+    "Bot Protection": "機器人保護",
+    "Require human verification on login, registration, and password recovery": "在登入、註冊與找回密碼時要求人機驗證",
+    "Enable bot protection": "啟用人機驗證",
+    "Bot protection provider": "人機驗證方案",
+    "Cloudflare Turnstile": "Cloudflare Turnstile",
+    "Cap.js (built-in)": "Cap.js（內建）",
+    "Site Key": "站點金鑰",
+    "Secret Key": "密鑰",
+    "Cap.js secret key": "Cap.js 密鑰",
+    "Optional. At least 16 characters. Leave empty to use server default.": "可選。至少 16 個字元。留空則使用伺服器預設值。",
+    "保存人机验证设置": "儲存人機驗證設定"
   }
 }
