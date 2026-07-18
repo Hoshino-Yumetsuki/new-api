@@ -84,15 +84,34 @@ export default function SettingsCreditLimit(props) {
   }
 
   useEffect(() => {
-    const currentInputs = {};
-    for (let key in props.options) {
-      if (Object.keys(inputs).includes(key)) {
-        currentInputs[key] = props.options[key];
+    const defaults = {
+      QuotaForNewUser: '',
+      PreConsumedQuota: '',
+      QuotaForInviter: '',
+      QuotaForInvitee: '',
+      'quota_setting.enable_free_model_pre_consume': true,
+      'payment_setting.aff_commission_enabled': false,
+      'payment_setting.aff_commission_type': 'percentage',
+      'payment_setting.aff_commission_rate': 0,
+      'payment_setting.aff_commission_fixed_amount': 0,
+    };
+    const currentInputs = { ...defaults };
+    for (let key in defaults) {
+      if (!(key in props.options)) continue;
+      let value = props.options[key];
+      if (typeof defaults[key] === 'boolean') {
+        value = value === true || value === 'true';
+      } else if (typeof defaults[key] === 'number') {
+        const parsed = Number(value);
+        value = Number.isNaN(parsed) ? defaults[key] : parsed;
+      } else if (key === 'payment_setting.aff_commission_type') {
+        value = value || 'percentage';
       }
+      currentInputs[key] = value;
     }
     setInputs(currentInputs);
     setInputsRow(structuredClone(currentInputs));
-    refForm.current.setValues(currentInputs);
+    refForm.current?.setValues(currentInputs);
   }, [props.options]);
   return (
     <>

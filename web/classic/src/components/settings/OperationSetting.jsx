@@ -37,6 +37,11 @@ const OperationSetting = () => {
     QuotaForInviter: 0,
     QuotaForInvitee: 0,
     'quota_setting.enable_free_model_pre_consume': true,
+    'payment_setting.aff_commission_enabled': false,
+    'payment_setting.aff_commission_type': 'percentage',
+    'payment_setting.aff_commission_rate': 0,
+    'payment_setting.aff_commission_fixed_amount': 0,
+    'payment_setting.compliance_confirmed': false,
 
     /* 通用设置 */
     TopUpLink: '',
