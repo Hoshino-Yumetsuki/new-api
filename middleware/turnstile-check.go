@@ -9,7 +9,6 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/cap"
-	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 )
 
@@ -119,12 +118,6 @@ func TurnstileCheck() gin.HandlerFunc {
 			return
 		}
 
-		session := sessions.Default(c)
-		if session.Get("turnstile") != nil {
-			c.Next()
-			return
-		}
-
 		token := c.Query("turnstile")
 		if token == "" {
 			c.JSON(http.StatusOK, gin.H{
@@ -151,15 +144,6 @@ func TurnstileCheck() gin.HandlerFunc {
 				"message": message,
 			})
 			c.Abort()
-			return
-		}
-
-		session.Set("turnstile", true)
-		if err := session.Save(); err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"message": "无法保存会话信息，请重试",
-				"success": false,
-			})
 			return
 		}
 		c.Next()
