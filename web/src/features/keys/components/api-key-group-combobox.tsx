@@ -37,6 +37,8 @@ import {
 } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
 
+import { nextApiKeyGroupValue } from './api-key-group-selection'
+
 export type ApiKeyGroupOption = {
   value: string
   label: string
@@ -124,7 +126,7 @@ export function ApiKeyGroupCombobox({
   }, [options, searchValue])
 
   const handleSelect = (selectedValue: string) => {
-    onValueChange(selectedValue)
+    onValueChange(nextApiKeyGroupValue(value, selectedValue))
     setOpen(false)
     setSearchValue('')
   }
