@@ -25,6 +25,7 @@ import type {
   SystemOptionsResponse,
   SystemTaskListResponse,
   SystemTaskResponse,
+  UpdateGroupSettingsRequest,
   UpdateOptionRequest,
   UpdateOptionResponse,
   UpstreamChannelsResponse,
@@ -38,6 +39,11 @@ export async function getSystemOptions() {
 
 export async function updateSystemOption(request: UpdateOptionRequest) {
   const res = await api.put<UpdateOptionResponse>('/api/option/', request)
+  return res.data
+}
+
+export async function updateGroupSettings(request: UpdateGroupSettingsRequest) {
+  const res = await api.put<UpdateOptionResponse>('/api/option/groups', request)
   return res.data
 }
 

@@ -69,6 +69,7 @@ import {
 } from '@/components/ui/sheet'
 
 import { safeJsonParse } from '../utils/json-parser'
+import { getVisualGroupRenames } from './group-rename-utils'
 
 type GroupRatioVisualEditorProps = {
   groupRatio: string
@@ -78,10 +79,13 @@ type GroupRatioVisualEditorProps = {
   autoGroups: string
   groupSpecialUsableGroup: string
   onChange: (field: string, value: string) => void
+  onRenamesChange: (renames: Array<{ from: string; to: string }>) => void
+  onValidationChange: (valid: boolean) => void
 }
 
 type GroupPricingRow = {
   _id: string
+  originalName?: string
   name: string
   ratio: string
   topupRatio: string
@@ -148,6 +152,7 @@ function buildGroupPricingRows(
 
   return [...names].map((name) => ({
     _id: createGroupPricingId(),
+    originalName: name,
     name,
     ratio: String(normalizeRatio(ratioMap[name])),
     topupRatio: Object.hasOwn(topupMap, name) ? String(topupMap[name]) : '',
@@ -259,6 +264,8 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
   autoGroups,
   groupSpecialUsableGroup,
   onChange,
+  onRenamesChange,
+  onValidationChange,
 }: GroupRatioVisualEditorProps) {
   const { t } = useTranslation()
   const [detailGroup, setDetailGroup] = useState<string | null>(null)
@@ -330,6 +337,8 @@ export const GroupRatioVisualEditor = memo(function GroupRatioVisualEditor({
         userUsableGroups={userUsableGroups}
         topupGroupRatio={topupGroupRatio}
         onChange={onChange}
+        onRenamesChange={onRenamesChange}
+        onValidationChange={onValidationChange}
         onShowDetail={setDetailGroup}
       />
 
@@ -421,6 +430,8 @@ type GroupPricingTableProps = {
   userUsableGroups: string
   topupGroupRatio: string
   onChange: (field: string, value: string) => void
+  onRenamesChange: (renames: Array<{ from: string; to: string }>) => void
+  onValidationChange: (valid: boolean) => void
   onShowDetail: (name: string) => void
 }
 
@@ -429,6 +440,8 @@ function GroupPricingTable({
   userUsableGroups,
   topupGroupRatio,
   onChange,
+  onRenamesChange,
+  onValidationChange,
   onShowDetail,
 }: GroupPricingTableProps) {
   const { t } = useTranslation()
@@ -442,16 +455,11 @@ function GroupPricingTable({
       userUsableGroups,
       topupGroupRatio
     )
-    setRows((currentRows) => {
-      if (groupPricingSignature(currentRows) === incomingSignature) {
-        return currentRows
-      }
-      return buildGroupPricingRows(
-        groupRatio,
-        userUsableGroups,
-        topupGroupRatio
-      )
-    })
+    setRows((currentRows) =>
+      groupPricingSignature(currentRows) === incomingSignature
+        ? currentRows
+        : buildGroupPricingRows(groupRatio, userUsableGroups, topupGroupRatio)
+    )
   }, [groupRatio, userUsableGroups, topupGroupRatio])
 
   const emitRows = useCallback(
@@ -468,7 +476,7 @@ function GroupPricingTable({
   const updateRow = useCallback(
     (
       id: string,
-      field: Exclude<keyof GroupPricingRow, '_id'>,
+      field: Exclude<keyof GroupPricingRow, '_id' | 'originalName'>,
       value: string | number | boolean
     ) => {
       emitRows(
@@ -517,6 +525,17 @@ function GroupPricingTable({
       .filter(([, count]) => count > 1)
       .map(([name]) => name)
   }, [rows])
+
+  const hasInvalidNames =
+    duplicateNames.length > 0 || rows.some((row) => !row.name.trim())
+
+  useEffect(() => {
+    onValidationChange(!hasInvalidNames)
+  }, [hasInvalidNames, onValidationChange])
+
+  useEffect(() => {
+    onRenamesChange(getVisualGroupRenames(rows))
+  }, [onRenamesChange, rows])
 
   return (
     <Card className={sectionCardClassName}>

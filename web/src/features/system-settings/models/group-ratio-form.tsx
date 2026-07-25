@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Code2, Eye, HelpCircle } from 'lucide-react'
-import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import type { UseFormReturn } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
@@ -26,6 +26,7 @@ import {
   sideDrawerFormClassName,
   sideDrawerHeaderClassName,
 } from '@/components/drawer-layout'
+import { Dialog } from '@/components/dialog'
 import {
   Accordion,
   AccordionContent,
@@ -59,7 +60,12 @@ import {
 } from '../components/settings-form-layout'
 import { SettingsPageActionsPortal } from '../components/settings-page-context'
 import { safeJsonParse } from '../utils/json-parser'
+import type { GroupRename } from '../types'
 import { GroupRatioVisualEditor } from './group-ratio-visual-editor'
+import {
+  getGroupNames,
+  isValidGroupRenames,
+} from './group-rename-utils'
 import { GroupSpecialUsableRulesEditor } from './group-special-usable-editor'
 
 type GroupFormValues = {
@@ -74,7 +80,7 @@ type GroupFormValues = {
 
 type GroupRatioFormProps = {
   form: UseFormReturn<GroupFormValues>
-  onSave: (values: GroupFormValues) => Promise<void>
+  onSave: (values: GroupFormValues, renames: GroupRename[]) => Promise<void>
   isSaving: boolean
 }
 
@@ -86,6 +92,20 @@ export const GroupRatioForm = memo(function GroupRatioForm({
   const { t } = useTranslation()
   const [editMode, setEditMode] = useState<'visual' | 'json'>('visual')
   const [guideOpen, setGuideOpen] = useState(false)
+  const [renames, setRenames] = useState<GroupRename[]>([])
+  const [visualNamesValid, setVisualNamesValid] = useState(true)
+  const [jsonRenameOpen, setJsonRenameOpen] = useState(false)
+  const [pendingJsonValues, setPendingJsonValues] =
+    useState<GroupFormValues | null>(null)
+  const [removedGroupNames, setRemovedGroupNames] = useState<string[]>([])
+  const [addedGroupNames, setAddedGroupNames] = useState<string[]>([])
+  const [jsonRenameSelection, setJsonRenameSelection] = useState<
+    Record<string, string>
+  >({})
+  const baselineGroupNames = useMemo(
+    () => getGroupNames(form.formState.defaultValues ?? {}),
+    [form.formState.defaultValues]
+  )
 
   const handleFieldChange = useCallback(
     (field: keyof GroupFormValues, value: string) => {
@@ -96,6 +116,64 @@ export const GroupRatioForm = memo(function GroupRatioForm({
     },
     [form]
   )
+
+  const handleSave = useCallback(
+    async (values: GroupFormValues) => {
+      if (editMode === 'visual') {
+        if (!visualNamesValid) return
+        await onSave(values, renames)
+        return
+      }
+
+      const currentGroupNames = getGroupNames(values)
+      const removed = baselineGroupNames.filter(
+        (name) => !currentGroupNames.includes(name)
+      )
+      const added = currentGroupNames.filter(
+        (name) => !baselineGroupNames.includes(name)
+      )
+      if (removed.length > 0 && added.length > 0) {
+        setPendingJsonValues(values)
+        setRemovedGroupNames(removed)
+        setAddedGroupNames(added)
+        setJsonRenameSelection({})
+        setJsonRenameOpen(true)
+        return
+      }
+      await onSave(values, [])
+    },
+    [baselineGroupNames, editMode, onSave, renames, visualNamesValid]
+  )
+
+  const handleJsonRenameSave = useCallback(async () => {
+    if (!pendingJsonValues) return
+    const jsonRenames = Object.entries(jsonRenameSelection).flatMap(
+      ([from, to]) => (to ? [{ from, to }] : [])
+    )
+    if (!isValidGroupRenames(removedGroupNames, addedGroupNames, jsonRenames)) {
+      return
+    }
+    await onSave(pendingJsonValues, jsonRenames)
+    setJsonRenameOpen(false)
+    setPendingJsonValues(null)
+  }, [
+    addedGroupNames,
+    jsonRenameSelection,
+    onSave,
+    pendingJsonValues,
+    removedGroupNames,
+  ])
+
+  const handleJsonDeleteAddSave = useCallback(async () => {
+    if (!pendingJsonValues) return
+    await onSave(pendingJsonValues, [])
+    setJsonRenameOpen(false)
+    setPendingJsonValues(null)
+  }, [onSave, pendingJsonValues])
+
+  useEffect(() => {
+    if (editMode === 'json') setRenames([])
+  }, [editMode])
 
   const toggleEditMode = useCallback(() => {
     setEditMode((prev) => (prev === 'visual' ? 'json' : 'visual'))
@@ -150,13 +228,77 @@ export const GroupRatioForm = memo(function GroupRatioForm({
 
       <GroupPricingGuide open={guideOpen} onOpenChange={setGuideOpen} />
 
+      <Dialog
+        open={jsonRenameOpen}
+        onOpenChange={setJsonRenameOpen}
+        title={t('Confirm group renames')}
+        description={t(
+          'Match each removed group to its replacement, or save the changes as separate deletions and additions.'
+        )}
+        contentHeight='auto'
+        bodyClassName='space-y-3'
+        footer={
+          <>
+            <Button variant='outline' onClick={() => setJsonRenameOpen(false)}>
+              {t('Cancel')}
+            </Button>
+            <Button variant='outline' onClick={handleJsonDeleteAddSave}>
+              {t('Save as delete/add')}
+            </Button>
+            <Button
+              onClick={handleJsonRenameSave}
+              disabled={
+                !isValidGroupRenames(
+                  removedGroupNames,
+                  addedGroupNames,
+                  Object.entries(jsonRenameSelection).flatMap(([from, to]) =>
+                    to ? [{ from, to }] : []
+                  )
+                )
+              }
+            >
+              {t('Save renames')}
+            </Button>
+          </>
+        }
+      >
+        {removedGroupNames.map((from) => (
+          <div key={from} className='grid grid-cols-2 items-center gap-3'>
+            <span className='font-medium'>{from}</span>
+            <select
+              className='border-input h-9 rounded-lg border bg-transparent px-2 text-sm'
+              value={jsonRenameSelection[from] ?? ''}
+              onChange={(event) =>
+                setJsonRenameSelection((current) => ({
+                  ...current,
+                  [from]: event.target.value,
+                }))
+              }
+            >
+              <option value=''>{t('Do not rename')}</option>
+              {addedGroupNames.map((to) => (
+                <option
+                  key={to}
+                  value={to}
+                  disabled={Object.entries(jsonRenameSelection).some(
+                    ([source, target]) => source !== from && target === to
+                  )}
+                >
+                  {to}
+                </option>
+              ))}
+            </select>
+          </div>
+        ))}
+      </Dialog>
+
       <Form {...form}>
         <SettingsPageActionsPortal>
           <Button
             type='button'
             size='sm'
-            onClick={form.handleSubmit(onSave)}
-            disabled={isSaving}
+            onClick={form.handleSubmit(handleSave)}
+            disabled={isSaving || (editMode === 'visual' && !visualNamesValid)}
           >
             {isSaving ? t('Saving...') : t('Save group ratios')}
           </Button>
@@ -173,6 +315,8 @@ export const GroupRatioForm = memo(function GroupRatioForm({
               onChange={(field, value) =>
                 handleFieldChange(field as keyof GroupFormValues, value)
               }
+              onRenamesChange={setRenames}
+              onValidationChange={setVisualNamesValid}
             />
 
             <GroupSpecialUsableRulesEditor
@@ -207,7 +351,7 @@ export const GroupRatioForm = memo(function GroupRatioForm({
             />
           </div>
         ) : (
-          <SettingsForm onSubmit={form.handleSubmit(onSave)}>
+          <SettingsForm onSubmit={form.handleSubmit(handleSave)}>
             <FormField
               control={form.control}
               name='GroupRatio'

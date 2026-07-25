@@ -120,6 +120,80 @@ type OptionUpdateRequest struct {
 	Value any    `json:"value"`
 }
 
+type groupSettingsUpdateRequest struct {
+	Options map[string]string   `json:"options"`
+	Renames []model.GroupRename `json:"renames"`
+}
+
+func UpdateGroupSettings(c *gin.Context) {
+	var request groupSettingsUpdateRequest
+	if err := common.DecodeJson(c.Request.Body, &request); err != nil {
+		common.ApiErrorMsg(c, "无效的参数")
+		return
+	}
+	if err := validateGroupSettings(request); err != nil {
+		common.ApiErrorMsg(c, err.Error())
+		return
+	}
+	result, err := model.UpdateGroupSettings(model.GroupSettingsRequest{
+		Options: request.Options,
+		Renames: request.Renames,
+	})
+	if err != nil {
+		common.ApiError(c, err)
+		return
+	}
+	recordManageAudit(c, "option.groups_update", map[string]interface{}{
+		"renames":  request.Renames,
+		"affected": result,
+	})
+	c.JSON(http.StatusOK, gin.H{"success": true, "message": "", "data": result})
+}
+
+func validateGroupSettings(request groupSettingsUpdateRequest) error {
+	required := []string{"GroupRatio", "TopupGroupRatio", "UserUsableGroups", "GroupGroupRatio", "AutoGroups", "DefaultUseAutoGroup", "group_ratio_setting.group_special_usable_group"}
+	for _, key := range required {
+		if _, ok := request.Options[key]; !ok {
+			return fmt.Errorf("missing group setting: %s", key)
+		}
+	}
+	var groupRatio, topupGroupRatio map[string]float64
+	var userUsableGroups map[string]string
+	var groupGroupRatio map[string]map[string]float64
+	var autoGroups []string
+	var specialGroups map[string]map[string]string
+	for _, option := range []struct {
+		key   string
+		value any
+	}{
+		{"GroupRatio", &groupRatio},
+		{"TopupGroupRatio", &topupGroupRatio},
+		{"UserUsableGroups", &userUsableGroups},
+		{"GroupGroupRatio", &groupGroupRatio},
+		{"AutoGroups", &autoGroups},
+		{"group_ratio_setting.group_special_usable_group", &specialGroups},
+	} {
+		if err := common.UnmarshalJsonStr(request.Options[option.key], option.value); err != nil {
+			return fmt.Errorf("invalid %s: %w", option.key, err)
+		}
+	}
+	if groupRatio == nil || topupGroupRatio == nil || userUsableGroups == nil || groupGroupRatio == nil || autoGroups == nil || specialGroups == nil {
+		return fmt.Errorf("group settings must not be null")
+	}
+	if request.Options["DefaultUseAutoGroup"] != "true" && request.Options["DefaultUseAutoGroup"] != "false" {
+		return fmt.Errorf("DefaultUseAutoGroup must be true or false")
+	}
+	if err := ratio_setting.CheckGroupRatio(request.Options["GroupRatio"]); err != nil {
+		return err
+	}
+	if value, ok := request.Options["ModelRequestRateLimitGroup"]; ok {
+		if err := setting.CheckModelRequestRateLimitGroup(value); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func UpdateOption(c *gin.Context) {
 	var option OptionUpdateRequest
 	err := common.DecodeJson(c.Request.Body, &option)

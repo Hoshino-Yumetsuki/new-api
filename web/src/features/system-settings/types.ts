@@ -39,6 +39,25 @@ export type UpdateOptionResponse = {
   message: string
 }
 
+export type GroupRename = {
+  from: string
+  to: string
+}
+
+export type UpdateGroupSettingsRequest = {
+  options: {
+    GroupRatio: string
+    TopupGroupRatio: string
+    UserUsableGroups: string
+    GroupGroupRatio: string
+    AutoGroups: string
+    DefaultUseAutoGroup: string
+    ModelRequestRateLimitGroup?: string
+    'group_ratio_setting.group_special_usable_group': string
+  }
+  renames: GroupRename[]
+}
+
 export type ConfirmPaymentComplianceResponse = {
   success: boolean
   message: string
