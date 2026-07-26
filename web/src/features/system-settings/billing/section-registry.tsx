@@ -74,7 +74,9 @@ const BILLING_SECTIONS = [
             aff_commission_enabled:
               settings['payment_setting.aff_commission_enabled'] ?? false,
             aff_commission_type:
-              settings['payment_setting.aff_commission_type'] || 'percentage',
+              settings['payment_setting.aff_commission_type'] === 'fixed'
+                ? 'fixed'
+                : 'percentage',
             aff_commission_rate:
               settings['payment_setting.aff_commission_rate'] ?? 0,
             aff_commission_fixed_amount:

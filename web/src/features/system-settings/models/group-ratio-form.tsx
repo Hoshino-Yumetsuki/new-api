@@ -27,6 +27,7 @@ import {
   sideDrawerHeaderClassName,
 } from '@/components/drawer-layout'
 import { Dialog } from '@/components/dialog'
+import { JsonCodeEditor } from '@/components/json-code-editor'
 import {
   Accordion,
   AccordionContent,
@@ -51,7 +52,6 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
-import { Textarea } from '@/components/ui/textarea'
 
 import {
   SettingsForm,
@@ -359,7 +359,13 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                 <FormItem>
                   <FormLabel>{t('Group ratios')}</FormLabel>
                   <FormControl>
-                    <Textarea rows={8} {...field} />
+                    <JsonCodeEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      textareaRef={field.ref}
+                    />
                   </FormControl>
                   <FormDescription>
                     {t(
@@ -378,7 +384,14 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                 <FormItem>
                   <FormLabel>{t('Top-up group ratios')}</FormLabel>
                   <FormControl>
-                    <Textarea rows={6} {...field} />
+                    <JsonCodeEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      textareaRef={field.ref}
+                      heightClassName='h-40 min-h-40 max-h-40'
+                    />
                   </FormControl>
                   <FormDescription>
                     {t(
@@ -398,7 +411,14 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                 <FormItem>
                   <FormLabel>{t('Selectable groups')}</FormLabel>
                   <FormControl>
-                    <Textarea rows={6} {...field} />
+                    <JsonCodeEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      textareaRef={field.ref}
+                      heightClassName='h-40 min-h-40 max-h-40'
+                    />
                   </FormControl>
                   <FormDescription>
                     {t(
@@ -417,7 +437,13 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                 <FormItem>
                   <FormLabel>{t('Inter-group overrides')}</FormLabel>
                   <FormControl>
-                    <Textarea rows={8} {...field} />
+                    <JsonCodeEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      textareaRef={field.ref}
+                    />
                   </FormControl>
                   <FormDescription>
                     {t('Nested JSON: source group →')}{' '}
@@ -438,7 +464,14 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                 <FormItem>
                   <FormLabel>{t('Auto assignment order')}</FormLabel>
                   <FormControl>
-                    <Textarea rows={6} {...field} />
+                    <JsonCodeEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      textareaRef={field.ref}
+                      heightClassName='h-40 min-h-40 max-h-40'
+                    />
                   </FormControl>
                   <FormDescription>
                     {t(
@@ -457,7 +490,13 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                 <FormItem>
                   <FormLabel>{t('Special usable group rules')}</FormLabel>
                   <FormControl>
-                    <Textarea rows={8} {...field} />
+                    <JsonCodeEditor
+                      value={field.value}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      textareaRef={field.ref}
+                    />
                   </FormControl>
                   <FormDescription>
                     {t(
