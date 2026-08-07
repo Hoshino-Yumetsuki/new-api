@@ -152,7 +152,7 @@ func UpdateGroupSettings(c *gin.Context) {
 }
 
 func validateGroupSettings(request groupSettingsUpdateRequest) error {
-	required := []string{"GroupRatio", "TopupGroupRatio", "UserUsableGroups", "GroupGroupRatio", "AutoGroups", "MaxTokenAutoGroups", "DefaultUseAutoGroup", "group_ratio_setting.group_special_usable_group"}
+	required := []string{"GroupRatio", "TopupGroupRatio", "UserUsableGroups", "GroupGroupRatio", "AutoGroups", "DefaultUseAutoGroup", "group_ratio_setting.group_special_usable_group"}
 	for _, key := range required {
 		if _, ok := request.Options[key]; !ok {
 			return fmt.Errorf("missing group setting: %s", key)
@@ -184,8 +184,10 @@ func validateGroupSettings(request groupSettingsUpdateRequest) error {
 	if request.Options["DefaultUseAutoGroup"] != "true" && request.Options["DefaultUseAutoGroup"] != "false" {
 		return fmt.Errorf("DefaultUseAutoGroup must be true or false")
 	}
-	if err := setting.ValidateMaxTokenAutoGroups(request.Options["MaxTokenAutoGroups"]); err != nil {
-		return err
+	if value, ok := request.Options["MaxTokenAutoGroups"]; ok {
+		if err := setting.ValidateMaxTokenAutoGroups(value); err != nil {
+			return err
+		}
 	}
 	if err := ratio_setting.CheckGroupRatio(request.Options["GroupRatio"]); err != nil {
 		return err
