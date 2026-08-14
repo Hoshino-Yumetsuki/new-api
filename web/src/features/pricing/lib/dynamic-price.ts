@@ -58,6 +58,7 @@ export type DynamicPricingSummary = {
   entries: DynamicPriceEntry[]
   primaryEntries: DynamicPriceEntry[]
   secondaryEntries: DynamicPriceEntry[]
+  marketplaceEntries: DynamicPriceEntry[]
 }
 
 const PRIMARY_DYNAMIC_FIELDS = new Set(['inputPrice', 'outputPrice'])
@@ -152,6 +153,52 @@ export function getDynamicPriceEntries(
     return 0
   })
 }
+const MARKETPLACE_DYNAMIC_PRICES = [
+  {
+    key: 'p',
+    fields: ['inputPrice'],
+    label: 'Input price',
+    shortLabel: 'Input',
+  },
+  {
+    key: 'c',
+    fields: ['outputPrice'],
+    label: 'Completion price',
+    shortLabel: 'Output',
+  },
+  {
+    key: 'cache',
+    fields: ['cacheReadPrice', 'cacheCreatePrice', 'cacheCreate1hPrice'],
+    label: 'Cached price',
+    shortLabel: 'Cached',
+  },
+] as const
+
+function getDynamicMarketplacePriceEntries(
+  tiers: ParsedTier[],
+  options: DynamicPriceOptions
+): DynamicPriceEntry[] {
+  const entries = tiers.flatMap((tier) => getDynamicPriceEntries(tier, options))
+
+  return MARKETPLACE_DYNAMIC_PRICES.flatMap((price) => {
+    const candidates = entries.filter((entry) =>
+      price.fields.some((field) => field === entry.field)
+    )
+    if (candidates.length === 0) return []
+
+    const entry = candidates.reduce((lowest, candidate) =>
+      candidate.value < lowest.value ? candidate : lowest
+    )
+    return [
+      {
+        ...entry,
+        key: price.key,
+        label: price.label,
+        shortLabel: price.shortLabel,
+      },
+    ]
+  })
+}
 
 export function getDynamicPricingSummary(
   model: PricingModel,
@@ -170,6 +217,7 @@ export function getDynamicPricingSummary(
     tierCount: tiers.length,
     hasRequestRules: hasDynamicRequestRules(model),
     isSpecialExpression: rawExpression.trim().length > 0 && tiers.length === 0,
+    marketplaceEntries: getDynamicMarketplacePriceEntries(tiers, options),
     rawExpression,
     entries,
     primaryEntries: entries.filter((entry) =>

@@ -104,10 +104,10 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           </code>
         </span>
       )
-    } else if (dynamicSummary.primaryEntries.length > 0) {
+    } else if (dynamicSummary.marketplaceEntries.length > 0) {
       priceSummary = (
         <>
-          {dynamicSummary.primaryEntries.map((entry) => (
+          {dynamicSummary.marketplaceEntries.map((entry) => (
             <span
               key={entry.key}
               className='text-muted-foreground whitespace-nowrap'

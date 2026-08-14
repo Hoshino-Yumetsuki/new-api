@@ -142,7 +142,9 @@ export function usePricingColumns(
             )
           }
 
-          const primaryEntries = dynamicSummary.primaryEntries.slice(0, 2)
+          const primaryEntries = dynamicSummary.marketplaceEntries.filter(
+            (entry) => entry.key === 'p' || entry.key === 'c'
+          )
           if (primaryEntries.length === 0) {
             return (
               <span className='text-muted-foreground text-xs'>
@@ -263,17 +265,17 @@ export function usePricingColumns(
             )
           }
 
-          const cacheEntry = dynamicSummary.entries.find(
-            (entry) => entry.field === 'cacheReadPrice'
+          const cachedEntry = dynamicSummary.marketplaceEntries.find(
+            (entry) => entry.key === 'cache'
           )
-          if (!cacheEntry) {
+          if (!cachedEntry) {
             return <span className='text-muted-foreground/30 text-xs'>—</span>
           }
 
           return (
             <div className='max-w-full min-w-0'>
               <span className='font-mono text-sm tabular-nums'>
-                {stripTrailingZeros(cacheEntry.formatted)}
+                {stripTrailingZeros(cachedEntry.formatted)}
               </span>
               <div className='text-muted-foreground/50 text-[10px]'>
                 / {tokenUnitLabel}
