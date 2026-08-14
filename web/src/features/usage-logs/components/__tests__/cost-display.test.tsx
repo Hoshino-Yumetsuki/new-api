@@ -131,11 +131,11 @@ async function renderCacheHitRate(
 }
 
 describe('cache hit rate display', () => {
-  test('shows one decimal and the configured emerald color', async () => {
-    const rendered = await renderCacheHitRate(9, 991)
+  test('shows cache reads over total input with one decimal and emerald color', async () => {
+    const rendered = await renderCacheHitRate(120632, 112128)
     const value = rendered.container.querySelector('span')
 
-    assert.equal(value?.textContent, '99.1%')
+    assert.equal(value?.textContent, '93.0%')
     assert.equal(value?.style.color, 'var(--color-emerald-600)')
 
     await unmountCost(rendered)
@@ -149,8 +149,8 @@ describe('cache hit rate display', () => {
     await unmountCost(rendered)
   })
 
-  test('caps invalid over-100 input at 100 percent', async () => {
-    const rendered = await renderCacheHitRate(-100, 200)
+  test('caps inconsistent cache tokens at 100 percent', async () => {
+    const rendered = await renderCacheHitRate(100, 200)
 
     assert.equal(rendered.container.textContent, '100.0%')
 

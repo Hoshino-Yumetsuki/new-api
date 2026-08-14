@@ -103,11 +103,8 @@ export function getCacheHitRate(
   const cacheRead = Number.isFinite(cacheReadTokens)
     ? Math.max(cacheReadTokens, 0)
     : 0
-  if (cacheRead === 0) return 0
-  if (input === 0) return 1
-  return cacheRead >= input
-    ? 1 / (1 + input / cacheRead)
-    : cacheRead / input / (1 + cacheRead / input)
+  if (input === 0 || cacheRead === 0) return 0
+  return Math.min(cacheRead / input, 1)
 }
 
 function hasLegacySearchSurcharge(
