@@ -318,6 +318,8 @@ function CommonLogsCard<TData>({
   const modelCell = cells.get('model_name')
   const quotaCell = cells.get('quota')
   const rowData = cells.get('created_at')?.row.original as UsageLog | undefined
+  const showCacheHitRate =
+    (rowData ? parseLogOther(rowData.other)?.cache_tokens || 0 : 0) > 0
 
   return (
     <div className='space-y-2.5'>
@@ -358,6 +360,12 @@ function CommonLogsCard<TData>({
           <MobileTokensField log={rowData} />
         ) : (
           <SummaryField cell={cells.get('prompt_tokens')} />
+        )}
+        {showCacheHitRate && (
+          <SummaryField
+            label={t('Cache Hit Rate')}
+            cell={cells.get('cache_hit_rate')}
+          />
         )}
         <SummaryField
           label={t('Details')}

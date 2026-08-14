@@ -20,7 +20,24 @@ import assert from 'node:assert/strict'
 import { describe, test } from 'node:test'
 
 import type { LogOtherData } from '../../types'
-import { hasToolSurcharge } from '../format'
+import { getCacheHitRate, hasToolSurcharge } from '../format'
+
+describe('cache hit rate', () => {
+  test('uses cache reads over uncached plus cached input', () => {
+    assert.equal((getCacheHitRate(9, 991) * 100).toFixed(1), '99.1')
+  })
+
+  test('returns zero when no input tokens exist', () => {
+    assert.equal(getCacheHitRate(0, 0), 0)
+  })
+
+  test('normalizes invalid values and avoids finite addition overflow', () => {
+    assert.equal(getCacheHitRate(Number.NaN, 10), 1)
+    assert.equal(getCacheHitRate(10, Number.POSITIVE_INFINITY), 0)
+    assert.equal(getCacheHitRate(10, -1), 0)
+    assert.equal(getCacheHitRate(Number.MAX_VALUE, Number.MAX_VALUE), 0.5)
+  })
+})
 
 describe('tool surcharge detection', () => {
   test('shows the marker for a charged structured tool surcharge', () => {

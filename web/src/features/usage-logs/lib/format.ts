@@ -95,6 +95,20 @@ export function isViolationFeeLog(other: LogOtherData | null): boolean {
 function isPositiveFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value > 0
 }
+export function getCacheHitRate(
+  promptTokens: number,
+  cacheReadTokens: number
+): number {
+  const input = Number.isFinite(promptTokens) ? Math.max(promptTokens, 0) : 0
+  const cacheRead = Number.isFinite(cacheReadTokens)
+    ? Math.max(cacheReadTokens, 0)
+    : 0
+  if (cacheRead === 0) return 0
+  if (input === 0) return 1
+  return cacheRead >= input
+    ? 1 / (1 + input / cacheRead)
+    : cacheRead / input / (1 + cacheRead / input)
+}
 
 function hasLegacySearchSurcharge(
   enabled: boolean | undefined,

@@ -45,6 +45,10 @@ for (const key of domGlobals) {
     value: domWindow[key],
   })
 }
+Object.defineProperty(globalThis, 'matchMedia', {
+  configurable: true,
+  value: () => ({ matches: false }),
+})
 
 const { act } = await import('react')
 const { createRoot } = await import('react-dom/client')
@@ -60,12 +64,14 @@ await i18n.use(initReactI18next).init({
         Subscription: 'Subscription',
         'Deducted by subscription': 'Deducted by subscription',
         'Includes tool-call surcharge': 'Includes tool-call surcharge',
+        'Cache Hit Rate': 'Cache Hit Rate',
       },
     },
   },
 })
 
 const { LogCostDisplay } = await import('../log-cost-display')
+const { CacheHitRateCell } = await import('../cache-hit-rate-cell')
 const { formatLogQuota } = await import('@/lib/format')
 const reactTestGlobals = globalThis as typeof globalThis & {
   IS_REACT_ACT_ENVIRONMENT?: boolean
@@ -103,6 +109,54 @@ async function unmountCost(rendered: RenderedCost) {
 function normalizedText(value: string | null): string {
   return (value ?? '').replaceAll(/\s/g, '')
 }
+
+async function renderCacheHitRate(
+  promptTokens: number,
+  cacheReadTokens: number
+): Promise<RenderedCost> {
+  const container = document.createElement('div')
+  document.body.append(container)
+  const root = createRoot(container)
+
+  await act(async () => {
+    root.render(
+      <CacheHitRateCell
+        promptTokens={promptTokens}
+        cacheReadTokens={cacheReadTokens}
+      />
+    )
+  })
+
+  return { container, root }
+}
+
+describe('cache hit rate display', () => {
+  test('shows one decimal and the configured emerald color', async () => {
+    const rendered = await renderCacheHitRate(9, 991)
+    const value = rendered.container.querySelector('span')
+
+    assert.equal(value?.textContent, '99.1%')
+    assert.equal(value?.style.color, 'var(--color-emerald-600)')
+
+    await unmountCost(rendered)
+  })
+
+  test('shows an em dash when the cache rate is zero', async () => {
+    const rendered = await renderCacheHitRate(100, 0)
+
+    assert.equal(rendered.container.textContent, '—')
+
+    await unmountCost(rendered)
+  })
+
+  test('caps invalid over-100 input at 100 percent', async () => {
+    const rendered = await renderCacheHitRate(-100, 200)
+
+    assert.equal(rendered.container.textContent, '100.0%')
+
+    await unmountCost(rendered)
+  })
+})
 
 describe('log cost display', () => {
   after(() => {

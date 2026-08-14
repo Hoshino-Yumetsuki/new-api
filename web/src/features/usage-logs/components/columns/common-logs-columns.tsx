@@ -57,6 +57,7 @@ import {
   isPerCallBilling,
 } from '../../lib/utils'
 import type { LogOtherData } from '../../types'
+import { CacheHitRateCell } from '../cache-hit-rate-cell'
 import { DetailsDialog } from '../dialogs/details-dialog'
 import { LogCostDisplay } from '../log-cost-display'
 import { ModelBadge } from '../model-badge'
@@ -304,7 +305,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
               variant={config.color as StatusBadgeProps['variant']}
               size='sm'
               copyable={false}
-              className='-ml-1.5 !text-xs [&_span]:!text-xs'
+              className='-ml-1.5 text-xs! [&_span]:text-xs!'
             />
           </div>
         )
@@ -358,7 +359,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
               <Tooltip>
                 <TooltipTrigger
                   render={
-                    <div className='flex max-w-[160px] flex-col gap-0.5' />
+                    <div className='flex max-w-40 flex-col gap-0.5' />
                   }
                 >
                   <div className='relative inline-flex w-fit items-center gap-1'>
@@ -435,7 +436,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                     )}
                   </div>
                   {log.channel_name && (
-                    <span className='text-muted-foreground/70 truncate [font-family:var(--font-body)] !text-xs'>
+                    <span className='text-muted-foreground/70 truncate [font-family:var(--font-body)] text-xs!'>
                       {channelName}
                     </span>
                   )}
@@ -518,7 +519,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                 <Tooltip>
                   <TooltipTrigger
                     render={
-                      <span className='text-muted-foreground max-w-[100px] truncate text-sm hover:underline' />
+                      <span className='text-muted-foreground max-w-25 truncate text-sm hover:underline' />
                     }
                   >
                     {sensitiveVisible ? log.username : '••••'}
@@ -553,7 +554,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
       const groupRatio = getGroupRatio(other)
 
       return (
-        <div className='flex max-w-[200px] flex-col gap-0.5'>
+        <div className='flex max-w-50 flex-col gap-0.5'>
           <TooltipProvider delay={300}>
             <Tooltip>
               <TooltipTrigger render={<div className='max-w-full' />}>
@@ -690,6 +691,22 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
       },
     },
     {
+      id: 'cache_hit_rate',
+      header: t('Cache Hit Rate'),
+      cell: ({ row }) => {
+        const log = row.original
+        if (!isDisplayableLogType(log.type)) return null
+
+        const cacheReadTokens = parseLogOther(log.other)?.cache_tokens || 0
+        return (
+          <CacheHitRateCell
+            promptTokens={log.prompt_tokens || 0}
+            cacheReadTokens={cacheReadTokens}
+          />
+        )
+      },
+    },
+    {
       accessorKey: 'quota',
       header: t('Cost'),
       cell: ({ row }) => {
@@ -769,7 +786,7 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
           <>
             <button
               type='button'
-              className='group flex max-w-[200px] items-center gap-1 text-left text-xs'
+              className='group flex max-w-50 items-center gap-1 text-left text-xs'
               onClick={() => setDialogOpen(true)}
               title={t('Click to view full details')}
             >
