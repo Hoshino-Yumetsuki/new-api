@@ -3373,7 +3373,7 @@
     "Per-token (ratio based)": "按令牌计费（基于比例）",
     "Per-token logit bias map": "按 token 的 logit 偏置映射",
     "Percentage": "百分比",
-    "Percentage of the paid quota awarded to the inviter (0–100).": "按下级用户充值额度的百分比奖励邀请者（0–100）。",
+    "Percentage of the paid quota awarded to the inviter (0–100).": "按付款额度奖励邀请者的百分比（0–100）。",
     "Percentage:": "百分比：",
     "Performance": "性能",
     "Performance data is not yet available for this model.": "该模型暂无性能数据。",
