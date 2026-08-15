@@ -16,39 +16,37 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
-import { describe, test } from 'node:test'
+import { describe, expect, test } from 'vitest'
 
 import type { LogOtherData } from '../../types'
 import { getCacheHitRate, hasToolSurcharge } from '../format'
 
 describe('cache hit rate', () => {
   test('uses cache reads over total input tokens', () => {
-    assert.equal((getCacheHitRate(120632, 112128) * 100).toFixed(1), '93.0')
-    assert.equal((getCacheHitRate(142007, 133632) * 100).toFixed(1), '94.1')
+    expect((getCacheHitRate(120632, 112128) * 100).toFixed(1)).toBe('93.0')
+    expect((getCacheHitRate(142007, 133632) * 100).toFixed(1)).toBe('94.1')
   })
 
   test('returns zero when total input or cache reads are unavailable', () => {
-    assert.equal(getCacheHitRate(0, 0), 0)
-    assert.equal(getCacheHitRate(0, 10), 0)
+    expect(getCacheHitRate(0, 0)).toBe(0)
+    expect(getCacheHitRate(0, 10)).toBe(0)
   })
 
   test('normalizes invalid values and caps inconsistent data', () => {
-    assert.equal(getCacheHitRate(Number.NaN, 10), 0)
-    assert.equal(getCacheHitRate(10, Number.POSITIVE_INFINITY), 0)
-    assert.equal(getCacheHitRate(10, -1), 0)
-    assert.equal(getCacheHitRate(100, 200), 1)
+    expect(getCacheHitRate(Number.NaN, 10)).toBe(0)
+    expect(getCacheHitRate(10, Number.POSITIVE_INFINITY)).toBe(0)
+    expect(getCacheHitRate(10, -1)).toBe(0)
+    expect(getCacheHitRate(100, 200)).toBe(1)
   })
 })
 
 describe('tool surcharge detection', () => {
   test('shows the marker for a charged structured tool surcharge', () => {
-    assert.equal(
+    expect(
       hasToolSurcharge({
         tool_surcharges: [{ name: 'lookup_customer', count: 2, price: 5 }],
-      }),
-      true
-    )
+      })
+    ).toBe(true)
   })
 
   const legacyCases: Array<{
@@ -82,7 +80,7 @@ describe('tool surcharge detection', () => {
 
   for (const scenario of legacyCases) {
     test(`keeps the marker visible for legacy ${scenario.name} charges`, () => {
-      assert.equal(hasToolSurcharge(scenario.other), true)
+      expect(hasToolSurcharge(scenario.other)).toBe(true)
     })
   }
 
@@ -112,7 +110,7 @@ describe('tool surcharge detection', () => {
     ]
 
     for (const other of invalidCases) {
-      assert.equal(hasToolSurcharge(other), false)
+      expect(hasToolSurcharge(other)).toBe(false)
     }
   })
 })

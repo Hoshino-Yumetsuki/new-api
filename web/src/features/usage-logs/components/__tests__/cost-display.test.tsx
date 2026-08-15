@@ -16,182 +16,88 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import assert from 'node:assert/strict'
-import { after, describe, test } from 'node:test'
-
-import { Window } from 'happy-dom'
+import { render, screen } from '@testing-library/react'
+import i18next from 'i18next'
 import type React from 'react'
+import { beforeAll, describe, expect, test } from 'vitest'
 
-const domWindow = new Window()
-const domGlobals = [
-  'window',
-  'document',
-  'navigator',
-  'HTMLElement',
-  'SVGElement',
-  'Node',
-  'Element',
-  'Event',
-  'CustomEvent',
-  'MutationObserver',
-  'requestAnimationFrame',
-  'cancelAnimationFrame',
-  'getComputedStyle',
-] as const
+import { formatLogQuota } from '@/lib/format'
 
-for (const key of domGlobals) {
-  Object.defineProperty(globalThis, key, {
-    configurable: true,
-    value: domWindow[key],
-  })
-}
-Object.defineProperty(globalThis, 'matchMedia', {
-  configurable: true,
-  value: () => ({ matches: false }),
-})
+import { CacheHitRateCell } from '../cache-hit-rate-cell'
+import { LogCostDisplay } from '../log-cost-display'
 
-const { act } = await import('react')
-const { createRoot } = await import('react-dom/client')
-const { createInstance } = await import('i18next')
-const { I18nextProvider, initReactI18next } = await import('react-i18next')
-
-const i18n = createInstance()
-await i18n.use(initReactI18next).init({
-  lng: 'en',
-  resources: {
-    en: {
-      translation: {
-        Subscription: 'Subscription',
-        'Deducted by subscription': 'Deducted by subscription',
-        'Includes tool-call surcharge': 'Includes tool-call surcharge',
-        'Cache Hit Rate': 'Cache Hit Rate',
-      },
-    },
-  },
-})
-
-const { LogCostDisplay } = await import('../log-cost-display')
-const { CacheHitRateCell } = await import('../cache-hit-rate-cell')
-const { formatLogQuota } = await import('@/lib/format')
-const reactTestGlobals = globalThis as typeof globalThis & {
-  IS_REACT_ACT_ENVIRONMENT?: boolean
-}
-reactTestGlobals.IS_REACT_ACT_ENVIRONMENT = true
-
-type RenderedCost = {
-  container: HTMLDivElement
-  root: ReturnType<typeof createRoot>
-}
-
-async function renderCost(
+function renderCost(
   props: React.ComponentProps<typeof LogCostDisplay>
-): Promise<RenderedCost> {
-  const container = document.createElement('div')
-  document.body.append(container)
-  const root = createRoot(container)
-
-  await act(async () => {
-    root.render(
-      <I18nextProvider i18n={i18n}>
-        <LogCostDisplay {...props} />
-      </I18nextProvider>
-    )
-  })
-
-  return { container, root }
-}
-
-async function unmountCost(rendered: RenderedCost) {
-  await act(async () => rendered.root.unmount())
-  rendered.container.remove()
+): ReturnType<typeof render> {
+  return render(<LogCostDisplay {...props} />)
 }
 
 function normalizedText(value: string | null): string {
   return (value ?? '').replaceAll(/\s/g, '')
 }
 
-async function renderCacheHitRate(
-  promptTokens: number,
-  cacheReadTokens: number
-): Promise<RenderedCost> {
-  const container = document.createElement('div')
-  document.body.append(container)
-  const root = createRoot(container)
-
-  await act(async () => {
-    root.render(
-      <CacheHitRateCell
-        promptTokens={promptTokens}
-        cacheReadTokens={cacheReadTokens}
-      />
-    )
-  })
-
-  return { container, root }
+function renderCacheHitRate(promptTokens: number, cacheReadTokens: number) {
+  return render(
+    <CacheHitRateCell
+      promptTokens={promptTokens}
+      cacheReadTokens={cacheReadTokens}
+    />
+  )
 }
 
 describe('cache hit rate display', () => {
-  test('shows cache reads over total input with one decimal and emerald color', async () => {
-    const rendered = await renderCacheHitRate(120632, 112128)
+  test('shows cache reads over total input with one decimal and emerald color', () => {
+    const rendered = renderCacheHitRate(120632, 112128)
     const value = rendered.container.querySelector('span')
 
-    assert.equal(value?.textContent, '93.0%')
-    assert.equal(value?.style.color, 'var(--color-emerald-600)')
-
-    await unmountCost(rendered)
+    expect(value).toHaveTextContent('93.0%')
+    expect(value).toHaveStyle({ color: 'var(--color-emerald-600)' })
   })
 
-  test('shows an em dash when the cache rate is zero', async () => {
-    const rendered = await renderCacheHitRate(100, 0)
+  test('shows an em dash when the cache rate is zero', () => {
+    const rendered = renderCacheHitRate(100, 0)
 
-    assert.equal(rendered.container.textContent, '—')
-
-    await unmountCost(rendered)
+    expect(rendered.container).toHaveTextContent('—')
   })
 
-  test('caps inconsistent cache tokens at 100 percent', async () => {
-    const rendered = await renderCacheHitRate(100, 200)
+  test('caps inconsistent cache tokens at 100 percent', () => {
+    const rendered = renderCacheHitRate(100, 200)
 
-    assert.equal(rendered.container.textContent, '100.0%')
-
-    await unmountCost(rendered)
+    expect(rendered.container).toHaveTextContent('100.0%')
   })
 })
 
 describe('log cost display', () => {
-  after(() => {
-    domWindow.close()
+  beforeAll(() => {
+    i18next.addResourceBundle('en', 'translation', {
+      Subscription: 'Subscription',
+      'Deducted by subscription': 'Deducted by subscription',
+      'Includes tool-call surcharge': 'Includes tool-call surcharge',
+    })
   })
 
-  test('keeps the regular cost visible and adds an accessible surcharge marker', async () => {
-    const rendered = await renderCost({
+  test('keeps the regular cost visible and adds an accessible surcharge marker', () => {
+    const rendered = renderCost({
       quota: 12500,
       other: {
         tool_surcharges: [{ name: 'lookup_customer', count: 1, price: 5 }],
       },
     })
 
-    assert.equal(
+    expect(
       normalizedText(rendered.container.textContent).includes(
         normalizedText(formatLogQuota(12500))
-      ),
-      true
-    )
-    const marker = rendered.container.querySelector(
-      '[data-tool-surcharge-indicator="true"]'
-    )
-    assert.ok(marker)
-    assert.equal(
-      marker.getAttribute('aria-label'),
-      'Includes tool-call surcharge'
-    )
-    assert.equal(marker.getAttribute('tabindex'), '0')
-
-    await unmountCost(rendered)
+      )
+    ).toBe(true)
+    const marker = screen.getByRole('img', {
+      name: 'Includes tool-call surcharge',
+    })
+    expect(marker).toHaveAttribute('data-tool-surcharge-indicator', 'true')
+    expect(marker).toHaveAttribute('tabindex', '0')
   })
 
-  test('preserves the subscription badge and adds the same legacy surcharge marker', async () => {
-    const rendered = await renderCost({
+  test('preserves the subscription badge and adds the same legacy surcharge marker', () => {
+    renderCost({
       quota: 5000,
       other: {
         billing_source: 'subscription',
@@ -201,11 +107,9 @@ describe('log cost display', () => {
       },
     })
 
-    assert.equal(rendered.container.textContent?.includes('Subscription'), true)
-    assert.ok(
-      rendered.container.querySelector('[data-tool-surcharge-indicator="true"]')
-    )
-
-    await unmountCost(rendered)
+    expect(screen.getByText('Subscription')).toBeInTheDocument()
+    expect(
+      screen.getByRole('img', { name: 'Includes tool-call surcharge' })
+    ).toHaveAttribute('data-tool-surcharge-indicator', 'true')
   })
 })
