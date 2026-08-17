@@ -205,7 +205,6 @@ export function DynamicPricingBreakdown({
   }, [expr, requestRules])
 
   const hasTiers = tiers.length > 0
-  const hasRules = ruleGroups.length > 0
   const normalizedMatchedTierLabel = normalizeTierLabel(
     matchedTierLabel ?? undefined
   )
@@ -247,8 +246,17 @@ export function DynamicPricingBreakdown({
       (tier) => Number(tier[v.field as string as keyof ParsedTier] || 0) > 0
     )
   })
-  const mobileTierKeyOccurrences = new Map<string, number>()
-  const requestRuleKeyOccurrences = new Map<string, number>()
+  const pricingRows = tiers.flatMap((tier) => [
+    { tier, rule: null as RequestRuleGroup | null, multiplier: 1 },
+    ...ruleGroups.map((rule) => ({
+      tier,
+      rule,
+      multiplier: Number(rule.multiplier) || 1,
+    })),
+  ])
+  const rowKeyOccurrences = new Map<string, number>()
+  const formatPrice = (value: number) =>
+    value > 0 ? `${symbol}${(value * rate).toFixed(4)}` : '-'
 
   return (
     <section className={cn('min-w-0', !compact && 'py-3 sm:py-4')}>
@@ -268,225 +276,209 @@ export function DynamicPricingBreakdown({
         </div>
       )}
 
-      {hasTiers && (
-        <div className={cn(compact ? cn(hasRules && 'mb-2') : 'mb-3 sm:mb-4')}>
-          <div
-            className={
-              compact
-                ? 'text-muted-foreground mb-1.5 text-xs font-medium'
-                : 'text-foreground mb-2 text-sm font-semibold'
-            }
-          >
-            {t('Tiered price table')}
-          </div>
-          <div className='space-y-1.5 sm:hidden'>
-            {tiers.map((tier) => {
-              const condSummary = formatConditionSummary(tier.conditions, t)
-              const isMatched =
-                matchedTierLabel != null &&
-                matchedTierLabel !== '' &&
-                tier.label === matchedTierLabel
-              const rowKey = nextOccurrenceKey(
-                JSON.stringify(tier),
-                mobileTierKeyOccurrences
-              )
-              return (
-                <div
-                  key={`tier-mobile-${rowKey}`}
-                  className={cn(
-                    'rounded-md border p-2',
-                    isMatched && 'border-emerald-500/40 bg-emerald-500/10'
-                  )}
-                >
-                  <div className='mb-1.5 flex flex-wrap items-center gap-1.5'>
+      <div>
+        <div
+          className={
+            compact
+              ? 'text-muted-foreground mb-1.5 text-xs font-medium'
+              : 'text-foreground mb-2 text-sm font-semibold'
+          }
+        >
+          {t('Tiered price table')}
+        </div>
+        <div className='space-y-1.5 sm:hidden'>
+          {pricingRows.map(({ tier, rule, multiplier }) => {
+            const rowKey = nextOccurrenceKey(
+              `${JSON.stringify(tier)}:${rule ? JSON.stringify(rule) : 'base'}`,
+              rowKeyOccurrences
+            )
+            const isTierMatched =
+              !rule &&
+              normalizedMatchedTierLabel !== '' &&
+              normalizeTierLabel(tier.label) === normalizedMatchedTierLabel
+            const isRuleMatched = rule?.matched === true
+            return (
+              <div
+                key={`tier-mobile-${rowKey}`}
+                className={cn(
+                  'rounded-md border p-2',
+                  (isTierMatched || isRuleMatched) &&
+                    'border-emerald-500/40 bg-emerald-500/10'
+                )}
+              >
+                <div className='mb-1.5 flex flex-wrap items-center gap-1.5'>
+                  {rule ? (
+                    <span className='text-foreground text-xs break-all'>
+                      {describeGroup(rule, t)}
+                    </span>
+                  ) : (
                     <Badge
                       variant='secondary'
                       className='bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300'
                     >
                       {tier.label || t('Default')}
                     </Badge>
-                    {isMatched && (
-                      <Badge
-                        variant='secondary'
-                        className='bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
-                      >
-                        {t('Matched')}
-                      </Badge>
-                    )}
-                  </div>
-                  {condSummary && (
-                    <div className='text-muted-foreground mb-1.5 text-xs'>
-                      {condSummary}
-                    </div>
                   )}
-                  <div className='grid grid-cols-2 gap-x-3 gap-y-1.5'>
-                    {visiblePriceFields.map((v) => {
-                      const value = Number(
-                        tier[v.field as string as keyof ParsedTier] || 0
-                      )
-                      return (
-                        <div key={v.field} className='min-w-0'>
-                          <div className='text-muted-foreground truncate text-[10px] font-medium tracking-wider uppercase'>
-                            {t(v.shortLabel)}
-                          </div>
-                          <div
-                            className={cn(
-                              'truncate font-mono',
-                              compact ? 'text-xs' : 'text-sm font-semibold'
-                            )}
-                          >
-                            {value > 0
-                              ? `${symbol}${(value * rate).toFixed(4)}`
-                              : '-'}
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
+                  <Badge
+                    variant='secondary'
+                    className={cn(
+                      'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300',
+                      isRuleMatched &&
+                        'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
+                    )}
+                  >
+                    {multiplier}x
+                    {isTierMatched || isRuleMatched ? ` · ${t('Matched')}` : ''}
+                  </Badge>
                 </div>
-              )
-            })}
-          </div>
-          <StaticDataTable
-            className='hidden rounded-none border-0 sm:block'
-            tableClassName={
-              compact
-                ? '[&_td]:text-xs [&_td_*]:text-xs [&_th]:text-xs [&_th_*]:text-xs'
-                : 'text-sm'
-            }
-            headerRowClassName='hover:bg-transparent'
-            data={tiers}
-            getRowKey={(_tier, index) => `tier-${index}`}
-            getRowClassName={(tier) => {
-              const isMatched =
-                normalizedMatchedTierLabel !== '' &&
-                normalizeTierLabel(tier.label) === normalizedMatchedTierLabel
-              return cn(
-                isMatched &&
-                  'bg-emerald-50/70 hover:bg-emerald-50/70 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/10'
-              )
-            }}
-            columns={[
-              {
-                id: 'tier',
-                header: t('Tier'),
-                className: cn(
-                  'text-muted-foreground py-2 font-medium',
-                  compact && 'h-8'
-                ),
-                cellClassName: cn('align-top', compact ? 'py-2' : 'py-2.5'),
-                cell: (tier) => {
-                  const condSummary = formatConditionSummary(tier.conditions, t)
-                  const isMatched =
-                    normalizedMatchedTierLabel !== '' &&
-                    normalizeTierLabel(tier.label) ===
-                      normalizedMatchedTierLabel
-                  return (
-                    <>
-                      <div className='flex flex-wrap items-center gap-1.5'>
+                {!rule && formatConditionSummary(tier.conditions, t) && (
+                  <div className='text-muted-foreground mb-1.5 text-xs'>
+                    {formatConditionSummary(tier.conditions, t)}
+                  </div>
+                )}
+                <div className='grid grid-cols-2 gap-x-3 gap-y-1.5'>
+                  {visiblePriceFields.map((v) => {
+                    const value =
+                      (Number(tier[v.field as string as keyof ParsedTier]) ||
+                        0) * multiplier
+                    return (
+                      <div key={v.field} className='min-w-0'>
+                        <div className='text-muted-foreground truncate text-[10px] font-medium tracking-wider uppercase'>
+                          {t(v.shortLabel)}
+                        </div>
+                        <div
+                          className={cn(
+                            'truncate font-mono',
+                            compact ? 'text-xs' : 'text-sm font-semibold'
+                          )}
+                        >
+                          {formatPrice(value)}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        <StaticDataTable
+          className='hidden rounded-none border-0 sm:block'
+          tableClassName={compact ? '[&_*]:text-xs' : 'text-sm'}
+          headerRowClassName='hover:bg-transparent'
+          data={pricingRows}
+          getRowKey={(_row, index) => `tier-${index}`}
+          getRowClassName={({ tier, rule }) => {
+            const matched =
+              rule?.matched === true ||
+              (normalizedMatchedTierLabel !== '' &&
+                normalizeTierLabel(tier.label) === normalizedMatchedTierLabel)
+            return cn(
+              matched &&
+                'bg-emerald-50/70 hover:bg-emerald-50/70 dark:bg-emerald-500/10 dark:hover:bg-emerald-500/10'
+            )
+          }}
+          columns={[
+            {
+              id: 'tier',
+              header: t('Tier'),
+              className: cn(
+                'text-muted-foreground py-2 font-medium',
+                compact && 'h-8'
+              ),
+              cellClassName: cn('align-top', compact ? 'py-2' : 'py-2.5'),
+              cell: ({ tier, rule }) => {
+                const conditionSummary = formatConditionSummary(
+                  tier.conditions,
+                  t
+                )
+                const isTierMatched =
+                  normalizedMatchedTierLabel !== '' &&
+                  normalizeTierLabel(tier.label) === normalizedMatchedTierLabel
+                return (
+                  <>
+                    <div className='flex flex-wrap items-center gap-1.5'>
+                      {rule ? (
+                        <span className='text-foreground text-sm break-all'>
+                          {describeGroup(rule, t)}
+                        </span>
+                      ) : (
                         <Badge
                           variant='secondary'
                           className='bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300'
                         >
                           {tier.label || t('Default')}
                         </Badge>
-                        {isMatched && (
-                          <Badge
-                            variant='secondary'
-                            className='bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
-                          >
-                            {t('Matched')}
-                          </Badge>
-                        )}
-                      </div>
-                      {condSummary && (
-                        <div className='text-muted-foreground mt-1 text-xs'>
-                          {condSummary}
-                        </div>
                       )}
-                    </>
-                  )
-                },
+                    </div>
+                    {!rule && conditionSummary && (
+                      <div className='text-muted-foreground mt-1 text-xs'>
+                        {conditionSummary}
+                      </div>
+                    )}
+                    {isTierMatched && (
+                      <Badge
+                        variant='secondary'
+                        className='mt-1 bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
+                      >
+                        {t('Matched')}
+                      </Badge>
+                    )}
+                  </>
+                )
               },
-              ...visiblePriceFields.map((v, index) => ({
-                id: v.field ?? `price-${index}`,
-                header: t(v.shortLabel),
-                className: cn(
-                  'text-muted-foreground py-2 text-right font-medium',
-                  compact && 'h-8'
-                ),
-                cellClassName: cn(
-                  'text-right align-top font-mono',
-                  compact ? 'py-2' : 'py-2.5'
-                ),
-                cell: (tier: ParsedTier) => {
-                  const value = Number(
-                    tier[v.field as string as keyof ParsedTier] || 0
-                  )
-                  return value > 0 ? (
-                    <span className={cn(!compact && 'font-semibold')}>
-                      {`${symbol}${(value * rate).toFixed(4)}`}
-                    </span>
-                  ) : (
-                    '-'
-                  )
-                },
-              })),
-            ]}
-          />
-        </div>
-      )}
-
-      {hasRules && (
-        <div>
-          <div
-            className={
-              compact
-                ? 'text-muted-foreground mb-1.5 text-xs font-medium'
-                : 'text-foreground mb-2 text-sm font-semibold'
-            }
-          >
-            {t('Conditional multipliers')}
-          </div>
-          <ul className='space-y-1.5'>
-            {ruleGroups.map((group) => {
-              const isMatched = group.matched === true
-              const rowKey = nextOccurrenceKey(
-                `${group.conditionText || JSON.stringify(group.conditions)}:${group.multiplier}`,
-                requestRuleKeyOccurrences
-              )
-              return (
-                <li
-                  key={`group-${rowKey}`}
+            },
+            {
+              id: 'multiplier',
+              header: t('Multiplier'),
+              className: cn(
+                'text-center text-muted-foreground py-2 font-medium',
+                compact && 'h-8'
+              ),
+              cellClassName: cn(
+                'text-center align-top',
+                compact ? 'py-2' : 'py-2.5'
+              ),
+              cell: ({ multiplier, rule }) => (
+                <Badge
+                  variant='secondary'
                   className={cn(
-                    'bg-muted/50 flex items-center justify-between gap-3 rounded-md border border-transparent px-3 py-2',
-                    isMatched && 'border-emerald-500/40 bg-emerald-500/10'
+                    'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300',
+                    rule?.matched === true &&
+                      'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
                   )}
                 >
-                  <span
-                    className={cn(
-                      'text-foreground break-all',
-                      compact ? 'text-xs' : 'text-sm'
-                    )}
-                  >
-                    {describeGroup(group, t)}
+                  {multiplier}x{rule?.matched === true && ` · ${t('Matched')}`}
+                </Badge>
+              ),
+            },
+            ...visiblePriceFields.map((v, index) => ({
+              id: v.field ?? `price-${index}`,
+              header: t(v.shortLabel),
+              className: cn(
+                'text-muted-foreground py-2 text-right font-medium',
+                compact && 'h-8'
+              ),
+              cellClassName: cn(
+                'text-right align-top font-mono',
+                compact ? 'py-2' : 'py-2.5'
+              ),
+              cell: ({ tier, multiplier }: (typeof pricingRows)[number]) => {
+                const value =
+                  (Number(tier[v.field as string as keyof ParsedTier]) || 0) *
+                  multiplier
+                return value > 0 ? (
+                  <span className={cn(!compact && 'font-semibold')}>
+                    {formatPrice(value)}
                   </span>
-                  <Badge
-                    variant='secondary'
-                    className={cn(
-                      'shrink-0 bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300',
-                      isMatched &&
-                        'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300'
-                    )}
-                  >
-                    {group.multiplier}x{isMatched && ` · ${t('Matched')}`}
-                  </Badge>
-                </li>
-              )
-            })}
-          </ul>
-        </div>
-      )}
+                ) : (
+                  '-'
+                )
+              },
+            })),
+          ]}
+        />
+      </div>
     </section>
   )
 }

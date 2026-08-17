@@ -653,50 +653,48 @@ function PriceSection(props: {
       <section>
         <SectionTitle>{t('Base Price')}</SectionTitle>
         {dynamicSummary.primaryEntries.length > 0 ? (
-          <div className='grid grid-cols-2 gap-2'>
-            {dynamicSummary.primaryEntries.map((entry) => (
-              <div
-                key={entry.key}
-                className='bg-muted/20 rounded-lg border p-3'
-              >
-                <div className='text-muted-foreground text-xs'>
-                  {t(entry.shortLabel)}
-                </div>
-                <div className='text-foreground mt-1 font-mono text-base font-semibold tabular-nums'>
-                  {entry.formatted}
-                  <span className='text-muted-foreground/40 ml-1 text-xs font-normal'>
-                    / {tokenUnitLabel}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className='text-muted-foreground text-sm'>
-            {t('Dynamic Pricing')}
-          </p>
-        )}
-        {dynamicSummary.secondaryEntries.length > 0 && (
-          <div className='bg-muted/20 mt-3 rounded-lg border px-3 py-2.5'>
-            <div className='space-y-1.5'>
-              {dynamicSummary.secondaryEntries.map((entry) => (
-                <div
-                  key={entry.key}
-                  className='flex items-baseline justify-between gap-4'
-                >
-                  <span className='text-muted-foreground/70 text-sm'>
-                    {t(entry.shortLabel)}
-                  </span>
-                  <span className='text-muted-foreground font-mono text-sm tabular-nums'>
+          <StaticDataTable
+            className='rounded-none border-0'
+            data={[
+              ...dynamicSummary.primaryEntries,
+              ...dynamicSummary.secondaryEntries,
+            ]}
+            getRowKey={(entry) => entry.key}
+            columns={[
+              {
+                id: 'price-type',
+                header: t('Price'),
+                className: 'text-muted-foreground py-2 font-medium',
+                cellClassName: 'py-2.5',
+                cell: (entry) => t(entry.shortLabel),
+              },
+              {
+                id: 'price',
+                header: '',
+                className: 'py-2',
+                cellClassName: 'py-2.5 text-right',
+                cell: (entry) => (
+                  <span
+                    className={cn(
+                      'font-mono tabular-nums',
+                      dynamicSummary.primaryEntries.some(
+                        (item) => item.key === entry.key
+                      ) && 'font-semibold'
+                    )}
+                  >
                     {entry.formatted}
                     <span className='text-muted-foreground/40 ml-1 text-xs font-normal'>
                       / {tokenUnitLabel}
                     </span>
                   </span>
-                </div>
-              ))}
-            </div>
-          </div>
+                ),
+              },
+            ]}
+          />
+        ) : (
+          <p className='text-muted-foreground text-sm'>
+            {t('Dynamic Pricing')}
+          </p>
         )}
       </section>
     )
