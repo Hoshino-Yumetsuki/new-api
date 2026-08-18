@@ -697,11 +697,25 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
         const log = row.original
         if (!isDisplayableLogType(log.type)) return null
 
-        const cacheReadTokens = parseLogOther(log.other)?.cache_tokens || 0
+        const other = parseLogOther(log.other)
+        const cacheReadTokens = other?.cache_tokens || 0
+        const splitCacheWriteTokens =
+          (other?.cache_creation_tokens_5m || 0) +
+          (other?.cache_creation_tokens_1h || 0)
+        const cacheWriteTokens =
+          splitCacheWriteTokens || other?.cache_creation_tokens || 0
+        const billingPath = other?.admin_info?.usage_billing_path
+        const isAnthropic =
+          billingPath === 'billing-usage-anthropic' ||
+          billingPath === 'billing-usage-anthropic-estimated' ||
+          other?.claude === true ||
+          other?.usage_semantic === 'anthropic'
         return (
           <CacheHitRateCell
             promptTokens={log.prompt_tokens || 0}
             cacheReadTokens={cacheReadTokens}
+            cacheWriteTokens={cacheWriteTokens}
+            billingPath={isAnthropic ? 'billing-usage-anthropic' : billingPath}
           />
         )
       },

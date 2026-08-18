@@ -36,11 +36,18 @@ function normalizedText(value: string | null): string {
   return (value ?? '').replaceAll(/\s/g, '')
 }
 
-function renderCacheHitRate(promptTokens: number, cacheReadTokens: number) {
+function renderCacheHitRate(
+  promptTokens: number,
+  cacheReadTokens: number,
+  cacheWriteTokens?: number,
+  billingPath?: string
+) {
   return render(
     <CacheHitRateCell
       promptTokens={promptTokens}
       cacheReadTokens={cacheReadTokens}
+      cacheWriteTokens={cacheWriteTokens}
+      billingPath={billingPath}
     />
   )
 }
@@ -52,6 +59,16 @@ describe('cache hit rate display', () => {
 
     expect(value).toHaveTextContent('93.0%')
     expect(value).toHaveStyle({ color: 'var(--color-emerald-600)' })
+  })
+  test('shows the Anthropic cache rate from uncached, read, and created input', () => {
+    const rendered = renderCacheHitRate(
+      2,
+      97147,
+      11269,
+      'billing-usage-anthropic'
+    )
+
+    expect(rendered.container).toHaveTextContent('89.6%')
   })
 
   test('shows an em dash when the cache rate is zero', () => {

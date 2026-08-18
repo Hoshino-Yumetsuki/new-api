@@ -97,14 +97,24 @@ function isPositiveFiniteNumber(value: unknown): value is number {
 }
 export function getCacheHitRate(
   promptTokens: number,
-  cacheReadTokens: number
+  cacheReadTokens: number,
+  cacheWriteTokens = 0,
+  billingPath?: string
 ): number {
   const input = Number.isFinite(promptTokens) ? Math.max(promptTokens, 0) : 0
   const cacheRead = Number.isFinite(cacheReadTokens)
     ? Math.max(cacheReadTokens, 0)
     : 0
-  if (input === 0 || cacheRead === 0) return 0
-  return Math.min(cacheRead / input, 1)
+  if (cacheRead === 0) return 0
+
+  const denominator =
+    billingPath === 'billing-usage-anthropic'
+      ? input +
+        cacheRead +
+        (Number.isFinite(cacheWriteTokens) ? Math.max(cacheWriteTokens, 0) : 0)
+      : input
+  if (denominator === 0) return 0
+  return Math.min(cacheRead / denominator, 1)
 }
 
 function hasLegacySearchSurcharge(

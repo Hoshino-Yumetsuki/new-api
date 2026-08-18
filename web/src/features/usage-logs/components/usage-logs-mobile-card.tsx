@@ -318,9 +318,8 @@ function CommonLogsCard<TData>({
   const modelCell = cells.get('model_name')
   const quotaCell = cells.get('quota')
   const rowData = cells.get('created_at')?.row.original as UsageLog | undefined
-  const showCacheHitRate =
-    (rowData ? parseLogOther(rowData.other)?.cache_tokens || 0 : 0) > 0
-
+  const rowOther = rowData ? parseLogOther(rowData.other) : undefined
+  const showCacheHitRate = (rowOther?.cache_tokens || 0) > 0
   return (
     <div className='space-y-2.5'>
       <div className='flex min-w-0 items-center justify-between gap-3'>
