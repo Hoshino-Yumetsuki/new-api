@@ -14,7 +14,7 @@ var autoGroups = []string{
 	"default",
 }
 
-var AutoGroupEnabled = true
+var AutoGroupEnabled = false
 
 var DefaultUseAutoGroup = false
 

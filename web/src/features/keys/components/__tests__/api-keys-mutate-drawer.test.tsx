@@ -91,7 +91,7 @@ async function renderCreateDrawer(): Promise<void> {
   const freshAt = Date.now() + 60_000
   queryClient.setQueryData(
     ['status'],
-    { default_use_auto_group: true },
+    { auto_group_enabled: true, default_use_auto_group: true },
     { updatedAt: freshAt }
   )
   queryClient.setQueryData(

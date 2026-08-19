@@ -110,7 +110,7 @@ export function ApiKeysMutateDrawer({
   const [initializedTarget, setInitializedTarget] = useState<string | null>(
     null
   )
-  const autoGroupEnabled = status?.auto_group_enabled !== false
+  const autoGroupEnabled = status?.auto_group_enabled === true
   const defaultUseAutoGroup =
     autoGroupEnabled && status?.default_use_auto_group === true
 
