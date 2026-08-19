@@ -180,6 +180,8 @@ export interface SystemStatus {
   password_login_enabled?: boolean
   password_register_enabled?: boolean
   custom_oauth_providers?: CustomOAuthProviderInfo[]
+  auto_group_enabled?: boolean
+  default_use_auto_group?: boolean
   [key: string]: unknown
 }
 

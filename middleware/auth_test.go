@@ -249,3 +249,28 @@ func TestTryUserAuthCredentialClassification(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, databaseFailureResponse.Code)
 	assert.Contains(t, databaseFailureResponse.Body.String(), "AUTH_INTERNAL_ERROR")
 }
+
+func TestTokenAuthAllowsAutoGroupWithoutSelectableAutoEntry(t *testing.T) {
+	setupDashboardAuthMiddlewareTest(t)
+	user := createMiddlewarePATUser(t, "auto-group-user", "autogrouptoken")
+	common.SetMainDatabaseType(common.DatabaseTypeSQLite)
+	require.NoError(t, model.InitLogDB())
+	require.NoError(t, model.DB.AutoMigrate(&model.Token{}))
+	token := model.Token{
+		UserId: user.Id, Key: "autogrouptoken", Status: common.TokenStatusEnabled,
+		Name: "auto", Group: "auto", UnlimitedQuota: true, ExpiredTime: -1,
+	}
+	require.NoError(t, model.DB.Create(&token).Error)
+
+	router := gin.New()
+	router.GET("/protected", TokenAuth(), func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+	request := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	request.Header.Set("Authorization", "Bearer autogrouptoken")
+	response := httptest.NewRecorder()
+
+	router.ServeHTTP(response, request)
+
+	assert.Equal(t, http.StatusNoContent, response.Code)
+}

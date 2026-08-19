@@ -248,6 +248,9 @@ func UpdateGroupSettings(request GroupSettingsRequest) (GroupRenameResult, error
 				}
 			}
 		}
+		if value, exists := finalOptions["AutoGroupEnabled"]; exists && value != "true" && value != "false" {
+			return fmt.Errorf("invalid AutoGroupEnabled")
+		}
 		if value, exists := finalOptions["DefaultUseAutoGroup"]; exists && value != "true" && value != "false" {
 			return fmt.Errorf("invalid DefaultUseAutoGroup")
 		}

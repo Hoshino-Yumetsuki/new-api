@@ -300,6 +300,10 @@ func AddToken(c *gin.Context) {
 		return
 	}
 	if token.Group == "auto" {
+		if !setting.AutoGroupEnabled {
+			common.ApiErrorI18n(c, i18n.MsgTokenAutoGroupDisabled)
+			return
+		}
 		if !setTokenAutoGroups(c, &token, request.AutoGroups.Groups) {
 			return
 		}
@@ -405,6 +409,10 @@ func UpdateToken(c *gin.Context) {
 		cleanToken.ModelLimitsEnabled = token.ModelLimitsEnabled
 		cleanToken.ModelLimits = token.ModelLimits
 		cleanToken.AllowIps = token.AllowIps
+		if token.Group == "auto" && cleanToken.Group != "auto" && !setting.AutoGroupEnabled {
+			common.ApiErrorI18n(c, i18n.MsgTokenAutoGroupDisabled)
+			return
+		}
 		cleanToken.Group = token.Group
 		cleanToken.CrossGroupRetry = token.CrossGroupRetry
 		if token.Group != "auto" {

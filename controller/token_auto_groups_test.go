@@ -22,15 +22,18 @@ func configureTokenAutoGroupsTest(t *testing.T, maxCount string, autoGroups stri
 	originalAutoGroups := setting.AutoGroups2JsonString()
 	originalUsableGroups := setting.UserUsableGroups2JSONString()
 	originalRatios := ratio_setting.GroupRatio2JSONString()
+	originalEnabled := setting.AutoGroupEnabled
 	require.NoError(t, setting.UpdateMaxTokenAutoGroups(maxCount))
 	require.NoError(t, setting.UpdateAutoGroupsByJsonString(autoGroups))
 	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default","vip":"VIP"}`))
 	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1}`))
+	setting.AutoGroupEnabled = true
 	t.Cleanup(func() {
 		require.NoError(t, setting.UpdateMaxTokenAutoGroups(stringInt(originalMax)))
 		require.NoError(t, setting.UpdateAutoGroupsByJsonString(originalAutoGroups))
 		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(originalUsableGroups))
 		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalRatios))
+		setting.AutoGroupEnabled = originalEnabled
 	})
 }
 
@@ -107,6 +110,64 @@ func TestAddTokenEmptyAutoGroupsInheritGlobalAuto(t *testing.T) {
 			assert.Nil(t, responseData["auto_groups"])
 		})
 	}
+}
+
+func TestAddTokenRejectsAutoWhenDisabled(t *testing.T) {
+	configureTokenAutoGroupsTest(t, "5", `["default","vip"]`)
+	setting.AutoGroupEnabled = false
+	user := setupTokenAutoGroupsControllerTest(t)
+	request := baseAutoTokenRequest("disabled-auto")
+
+	ctx, recorder := newTokenAutoGroupsAuthenticatedContext(t, http.MethodPost, "/api/token/", request, user.Id)
+	AddToken(ctx)
+
+	response := decodeAPIResponse(t, recorder)
+	assert.Equal(t, "token.auto_group_disabled", response.Message)
+	var count int64
+	require.NoError(t, model.DB.Model(&model.Token{}).Count(&count).Error)
+	assert.Zero(t, count)
+}
+
+func TestUpdateTokenDisabledAutoTransitionPolicy(t *testing.T) {
+	configureTokenAutoGroupsTest(t, "5", `["default","vip"]`)
+	setting.AutoGroupEnabled = false
+	user := setupTokenAutoGroupsControllerTest(t)
+
+	t.Run("ordinary key cannot switch to Auto", func(t *testing.T) {
+		token := seedToken(t, model.DB, user.Id, "ordinary", "ordinary-key")
+		request := baseAutoTokenRequest("ordinary")
+		request["id"] = token.Id
+		request["status"] = common.TokenStatusEnabled
+		ctx, recorder := newTokenAutoGroupsAuthenticatedContext(t, http.MethodPut, "/api/token/", request, user.Id)
+
+		UpdateToken(ctx)
+
+		response := decodeAPIResponse(t, recorder)
+		assert.False(t, response.Success)
+		var unchanged model.Token
+		require.NoError(t, model.DB.First(&unchanged, token.Id).Error)
+		assert.NotEqual(t, "auto", unchanged.Group)
+	})
+
+	t.Run("existing Auto key remains editable", func(t *testing.T) {
+		token := seedToken(t, model.DB, user.Id, "existing-auto", "existing-auto-key")
+		token.Group = "auto"
+		token.CrossGroupRetry = true
+		require.NoError(t, model.DB.Save(token).Error)
+		request := baseAutoTokenRequest("renamed-auto")
+		request["id"] = token.Id
+		request["status"] = common.TokenStatusEnabled
+		ctx, recorder := newTokenAutoGroupsAuthenticatedContext(t, http.MethodPut, "/api/token/", request, user.Id)
+
+		UpdateToken(ctx)
+
+		response := decodeAPIResponse(t, recorder)
+		require.True(t, response.Success, response.Message)
+		var updated model.Token
+		require.NoError(t, model.DB.First(&updated, token.Id).Error)
+		assert.Equal(t, "auto", updated.Group)
+		assert.Equal(t, "renamed-auto", updated.Name)
+	})
 }
 
 func TestAddTokenPersistsOrderedAutoGroupsSnapshot(t *testing.T) {

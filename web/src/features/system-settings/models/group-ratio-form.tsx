@@ -77,6 +77,7 @@ type GroupFormValues = {
   GroupGroupRatio: string
   AutoGroups: string
   MaxTokenAutoGroups: number
+  AutoGroupEnabled: boolean
   DefaultUseAutoGroup: boolean
   GroupSpecialUsableGroup: string
 }
@@ -357,6 +358,37 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                 handleFieldChange('GroupSpecialUsableGroup', value)
               }
             />
+            <FormField
+              control={form.control}
+              name='AutoGroupEnabled'
+              render={({ field }) => (
+                <SettingsSwitchItem>
+                  <SettingsSwitchContent>
+                    <FormLabel>{t('Auto group behavior')}</FormLabel>
+                    <FormDescription>
+                      {t(
+                        'When enabled, users can pick this group when creating tokens.'
+                      )}
+                    </FormDescription>
+                  </SettingsSwitchContent>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={(enabled) => {
+                        field.onChange(enabled)
+                        if (!enabled) {
+                          form.setValue('DefaultUseAutoGroup', false, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          })
+                        }
+                      }}
+                    />
+                  </FormControl>
+                </SettingsSwitchItem>
+              )}
+            />
+
 
             <FormField
               control={form.control}
@@ -374,6 +406,7 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                   <FormControl>
                     <Switch
                       checked={field.value}
+                      disabled={!form.watch('AutoGroupEnabled')}
                       onCheckedChange={field.onChange}
                     />
                   </FormControl>
@@ -563,6 +596,37 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                 </FormItem>
               )}
             />
+            <FormField
+              control={form.control}
+              name='AutoGroupEnabled'
+              render={({ field }) => (
+                <SettingsSwitchItem>
+                  <SettingsSwitchContent>
+                    <FormLabel>{t('Auto group behavior')}</FormLabel>
+                    <FormDescription>
+                      {t(
+                        'When enabled, users can pick this group when creating tokens.'
+                      )}
+                    </FormDescription>
+                  </SettingsSwitchContent>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={(enabled) => {
+                        field.onChange(enabled)
+                        if (!enabled) {
+                          form.setValue('DefaultUseAutoGroup', false, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          })
+                        }
+                      }}
+                    />
+                  </FormControl>
+                </SettingsSwitchItem>
+              )}
+            />
+
 
             <FormField
               control={form.control}
@@ -580,6 +644,7 @@ export const GroupRatioForm = memo(function GroupRatioForm({
                   <FormControl>
                     <Switch
                       checked={field.value}
+                      disabled={!form.watch('AutoGroupEnabled')}
                       onCheckedChange={field.onChange}
                     />
                   </FormControl>

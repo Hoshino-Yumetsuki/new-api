@@ -152,7 +152,7 @@ func UpdateGroupSettings(c *gin.Context) {
 }
 
 func validateGroupSettings(request groupSettingsUpdateRequest) error {
-	required := []string{"GroupRatio", "TopupGroupRatio", "UserUsableGroups", "GroupGroupRatio", "AutoGroups", "DefaultUseAutoGroup", "group_ratio_setting.group_special_usable_group"}
+	required := []string{"GroupRatio", "TopupGroupRatio", "UserUsableGroups", "GroupGroupRatio", "AutoGroups", "AutoGroupEnabled", "DefaultUseAutoGroup", "group_ratio_setting.group_special_usable_group"}
 	for _, key := range required {
 		if _, ok := request.Options[key]; !ok {
 			return fmt.Errorf("missing group setting: %s", key)
@@ -180,6 +180,9 @@ func validateGroupSettings(request groupSettingsUpdateRequest) error {
 	}
 	if groupRatio == nil || topupGroupRatio == nil || userUsableGroups == nil || groupGroupRatio == nil || autoGroups == nil || specialGroups == nil {
 		return fmt.Errorf("group settings must not be null")
+	}
+	if request.Options["AutoGroupEnabled"] != "true" && request.Options["AutoGroupEnabled"] != "false" {
+		return fmt.Errorf("AutoGroupEnabled must be true or false")
 	}
 	if request.Options["DefaultUseAutoGroup"] != "true" && request.Options["DefaultUseAutoGroup"] != "false" {
 		return fmt.Errorf("DefaultUseAutoGroup must be true or false")

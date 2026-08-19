@@ -196,7 +196,9 @@ function selectComboboxOption(
 afterEach(() => {
   apiClient.get = originalGet
   apiClient.post = originalPost
-  localStorage.clear()
+  if (typeof localStorage !== 'undefined') {
+    localStorage.clear()
+  }
   if (renderedDrawer) {
     renderedDrawer.queryClient.clear()
     renderedDrawer = null

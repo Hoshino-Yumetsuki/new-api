@@ -52,6 +52,7 @@ export type UpdateGroupSettingsRequest = {
     GroupGroupRatio: string
     AutoGroups: string
     MaxTokenAutoGroups: string
+    AutoGroupEnabled: string
     DefaultUseAutoGroup: string
     ModelRequestRateLimitGroup?: string
     'group_ratio_setting.group_special_usable_group': string
@@ -249,6 +250,7 @@ export type ModelSettings = {
   GroupGroupRatio: string
   AutoGroups: string
   MaxTokenAutoGroups: number
+  AutoGroupEnabled: boolean
   DefaultUseAutoGroup: boolean
   'group_ratio_setting.group_special_usable_group': string
   RetryTimes: number
@@ -308,6 +310,7 @@ export type BillingSettings = {
   GroupGroupRatio: string
   AutoGroups: string
   MaxTokenAutoGroups: number
+  AutoGroupEnabled: boolean
   DefaultUseAutoGroup: boolean
   'group_ratio_setting.group_special_usable_group': string
   PayAddress: string

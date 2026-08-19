@@ -133,6 +133,7 @@ const createGroupSchema = (t: Translate) =>
       predicateMessage: 'Expected a JSON array of group identifiers',
     }),
     MaxTokenAutoGroups: positiveIntegerSchema(t('Enter a positive integer')),
+    AutoGroupEnabled: z.boolean(),
     DefaultUseAutoGroup: z.boolean(),
     GroupSpecialUsableGroup: createJsonStringField(t),
   })
@@ -222,6 +223,7 @@ export function RatioSettingsCard({
     GroupGroupRatio: normalizeJsonString(groupDefaults.GroupGroupRatio),
     AutoGroups: normalizeJsonString(groupDefaults.AutoGroups),
     MaxTokenAutoGroups: groupDefaults.MaxTokenAutoGroups,
+    AutoGroupEnabled: groupDefaults.AutoGroupEnabled,
     DefaultUseAutoGroup: groupDefaults.DefaultUseAutoGroup,
     GroupSpecialUsableGroup: normalizeJsonString(
       groupDefaults.GroupSpecialUsableGroup
@@ -309,6 +311,7 @@ export function RatioSettingsCard({
       GroupGroupRatio: normalizeJsonString(groupDefaults.GroupGroupRatio),
       AutoGroups: normalizeJsonString(groupDefaults.AutoGroups),
       MaxTokenAutoGroups: groupDefaults.MaxTokenAutoGroups,
+      AutoGroupEnabled: groupDefaults.AutoGroupEnabled,
       DefaultUseAutoGroup: groupDefaults.DefaultUseAutoGroup,
       GroupSpecialUsableGroup: normalizeJsonString(
         groupDefaults.GroupSpecialUsableGroup
@@ -380,6 +383,7 @@ export function RatioSettingsCard({
         GroupGroupRatio: normalizeJsonString(values.GroupGroupRatio),
         AutoGroups: normalizeJsonString(values.AutoGroups),
         MaxTokenAutoGroups: values.MaxTokenAutoGroups,
+        AutoGroupEnabled: values.AutoGroupEnabled,
         DefaultUseAutoGroup: values.DefaultUseAutoGroup,
         GroupSpecialUsableGroup: normalizeJsonString(
           values.GroupSpecialUsableGroup
@@ -402,6 +406,7 @@ export function RatioSettingsCard({
           GroupGroupRatio: normalized.GroupGroupRatio,
           AutoGroups: normalized.AutoGroups,
           MaxTokenAutoGroups: String(normalized.MaxTokenAutoGroups),
+          AutoGroupEnabled: String(normalized.AutoGroupEnabled),
           DefaultUseAutoGroup: String(normalized.DefaultUseAutoGroup),
           'group_ratio_setting.group_special_usable_group':
             normalized.GroupSpecialUsableGroup,

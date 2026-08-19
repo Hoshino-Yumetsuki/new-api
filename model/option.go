@@ -122,6 +122,7 @@ func InitOptionMap() {
 	common.OptionMap["TopupGroupRatio"] = common.TopupGroupRatio2JSONString()
 	common.OptionMap["Chats"] = setting.Chats2JsonString()
 	common.OptionMap["AutoGroups"] = setting.AutoGroups2JsonString()
+	common.OptionMap["AutoGroupEnabled"] = strconv.FormatBool(setting.AutoGroupEnabled)
 	common.OptionMap["DefaultUseAutoGroup"] = strconv.FormatBool(setting.DefaultUseAutoGroup)
 	common.OptionMap["MaxTokenAutoGroups"] = strconv.Itoa(setting.GetMaxTokenAutoGroups())
 	common.OptionMap["PayMethods"] = operation_setting.PayMethods2JsonString()
@@ -328,27 +329,27 @@ func updateOptionMap(key string, value string) (err error) {
 			common.WeChatAuthEnabled = boolValue
 		case "TelegramOAuthEnabled":
 			common.TelegramOAuthEnabled = boolValue
-			case "TurnstileCheckEnabled":
-				common.TurnstileCheckEnabled = boolValue
-				if boolValue {
-					common.BotProtectionEnabled = true
-					common.BotProtectionProvider = common.BotProtectionProviderTurnstile
-					common.CapJsCheckEnabled = false
-				} else if !common.CapJsCheckEnabled {
-					common.BotProtectionEnabled = false
-				}
-			case "CapJsCheckEnabled":
-				common.CapJsCheckEnabled = boolValue
-				if boolValue {
-					common.BotProtectionEnabled = true
-					common.BotProtectionProvider = common.BotProtectionProviderCapJs
-					common.TurnstileCheckEnabled = false
-				} else if !common.TurnstileCheckEnabled {
-					common.BotProtectionEnabled = false
-				}
-			case "BotProtectionEnabled":
-				common.BotProtectionEnabled = boolValue
-				common.SyncBotProtectionLegacyFlags()
+		case "TurnstileCheckEnabled":
+			common.TurnstileCheckEnabled = boolValue
+			if boolValue {
+				common.BotProtectionEnabled = true
+				common.BotProtectionProvider = common.BotProtectionProviderTurnstile
+				common.CapJsCheckEnabled = false
+			} else if !common.CapJsCheckEnabled {
+				common.BotProtectionEnabled = false
+			}
+		case "CapJsCheckEnabled":
+			common.CapJsCheckEnabled = boolValue
+			if boolValue {
+				common.BotProtectionEnabled = true
+				common.BotProtectionProvider = common.BotProtectionProviderCapJs
+				common.TurnstileCheckEnabled = false
+			} else if !common.TurnstileCheckEnabled {
+				common.BotProtectionEnabled = false
+			}
+		case "BotProtectionEnabled":
+			common.BotProtectionEnabled = boolValue
+			common.SyncBotProtectionLegacyFlags()
 		case "RegisterEnabled":
 			common.RegisterEnabled = boolValue
 		case "EmailDomainRestrictionEnabled":
@@ -413,6 +414,8 @@ func updateOptionMap(key string, value string) (err error) {
 			common.SMTPForceAuthLogin = boolValue
 		case "WorkerAllowHttpImageRequestEnabled":
 			system_setting.WorkerAllowHttpImageRequestEnabled = boolValue
+		case "AutoGroupEnabled":
+			setting.AutoGroupEnabled = boolValue
 		case "DefaultUseAutoGroup":
 			setting.DefaultUseAutoGroup = boolValue
 		case "ExposeRatioEnabled":
@@ -557,11 +560,11 @@ func updateOptionMap(key string, value string) (err error) {
 		common.TurnstileSecretKey = value
 	case "CapJsApiEndpoint":
 		common.CapJsApiEndpoint = value
-		case "CapJsSecretKey":
-			common.CapJsSecretKey = value
-		case "BotProtectionProvider":
-			common.BotProtectionProvider = value
-			common.SyncBotProtectionLegacyFlags()
+	case "CapJsSecretKey":
+		common.CapJsSecretKey = value
+	case "BotProtectionProvider":
+		common.BotProtectionProvider = value
+		common.SyncBotProtectionLegacyFlags()
 	case "QuotaForNewUser":
 		common.QuotaForNewUser, _ = strconv.Atoi(value)
 	case "QuotaForInviter":

@@ -110,7 +110,9 @@ export function ApiKeysMutateDrawer({
   const [initializedTarget, setInitializedTarget] = useState<string | null>(
     null
   )
-  const defaultUseAutoGroup = status?.default_use_auto_group === true
+  const autoGroupEnabled = status?.auto_group_enabled !== false
+  const defaultUseAutoGroup =
+    autoGroupEnabled && status?.default_use_auto_group === true
 
   // Fetch models
   const { data: modelsData } = useQuery({
@@ -155,16 +157,27 @@ export function ApiKeysMutateDrawer({
   })
 
   const models = modelsData?.data || []
-  const groups = useMemo<ApiKeyGroupOption[]>(
-    () =>
-      Object.entries(groupsData?.data || {}).map(([key, info]) => ({
-        value: key,
-        label: key,
-        desc: info.desc || key,
-        ratio: info.ratio,
-      })),
-    [groupsData]
-  )
+  const groups = useMemo<ApiKeyGroupOption[]>(() => {
+    const options = Object.entries(groupsData?.data || {}).map(([key, info]) => ({
+      value: key,
+      label: key,
+      desc: info.desc || key,
+      ratio: info.ratio,
+    }))
+    if (
+      isUpdate &&
+      currentRow?.group === 'auto' &&
+      !options.some((group) => group.value === 'auto')
+    ) {
+      options.unshift({
+        value: 'auto',
+        label: 'auto',
+        desc: t('Automatic routing'),
+        ratio: t('Automatic'),
+      })
+    }
+    return options
+  }, [currentRow?.group, groupsData, isUpdate, t])
   const backendHasAuto = groups.some((g) => g.value === 'auto')
   const availableAutoGroupNames = useMemo(
     () => groups.filter((group) => group.value !== 'auto').map((g) => g.value),
