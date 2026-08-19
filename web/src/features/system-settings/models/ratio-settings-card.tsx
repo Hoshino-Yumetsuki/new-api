@@ -169,6 +169,7 @@ export function RatioSettingsCard({
     mutationFn: updateGroupSettings,
     onSuccess: (data) => {
       if (data.success) {
+        toast.success(t('Group ratios saved successfully'))
         queryClient.invalidateQueries({ queryKey: ['system-options'] })
       } else {
         toast.error(data.message || t('Failed to save group ratios'))
