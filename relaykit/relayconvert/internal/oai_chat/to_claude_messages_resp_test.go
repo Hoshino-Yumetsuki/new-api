@@ -204,6 +204,120 @@ func TestStreamResponseOpenAI2ClaudeClosesTextThinkingAndToolBlocks(t *testing.T
 	assert.Equal(t, "message_stop", finishResponses[2].Type)
 }
 
+func TestStreamResponseOpenAI2ClaudeStartsAllInitialToolBlocks(t *testing.T) {
+	info := &convmeta.Values{
+		SendResponseCount: 1,
+		ClaudeConvertInfo: &convmeta.ClaudeConvertInfo{
+			LastMessagesType: convmeta.LastMessageTypeNone,
+		},
+	}
+
+	responses := StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
+		Id:    "chatcmpl_1",
+		Model: "gemini-test",
+		Choices: []dto.ChatCompletionsStreamResponseChoice{
+			{
+				Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
+					ToolCalls: []dto.ToolCallResponse{
+						{
+							Index: ptr(0),
+							ID:    "call_1",
+							Type:  "function",
+							Function: dto.FunctionResponse{
+								Name:      "first",
+								Arguments: `{"value":1}`,
+							},
+						},
+						{
+							Index: ptr(1),
+							ID:    "call_2",
+							Type:  "function",
+							Function: dto.FunctionResponse{
+								Name:      "second",
+								Arguments: `{"value":2}`,
+							},
+						},
+					},
+				},
+			},
+		},
+	}, info)
+
+	require.Len(t, responses, 5)
+	assert.Equal(t, "message_start", responses[0].Type)
+	assert.Equal(t, "content_block_start", responses[1].Type)
+	assert.Equal(t, 0, responses[1].GetIndex())
+	assert.Equal(t, "call_1", responses[1].ContentBlock.Id)
+	assert.Equal(t, "first", responses[1].ContentBlock.Name)
+	assert.Equal(t, "content_block_delta", responses[2].Type)
+	assert.Equal(t, 0, responses[2].GetIndex())
+	assert.Equal(t, `{"value":1}`, *responses[2].Delta.PartialJson)
+	assert.Equal(t, "content_block_start", responses[3].Type)
+	assert.Equal(t, 1, responses[3].GetIndex())
+	assert.Equal(t, "call_2", responses[3].ContentBlock.Id)
+	assert.Equal(t, "second", responses[3].ContentBlock.Name)
+	assert.Equal(t, "content_block_delta", responses[4].Type)
+	assert.Equal(t, 1, responses[4].GetIndex())
+	assert.Equal(t, `{"value":2}`, *responses[4].Delta.PartialJson)
+
+	info.SendResponseCount = 2
+
+	finishResponses := StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
+		Choices: []dto.ChatCompletionsStreamResponseChoice{{FinishReason: ptr("tool_calls")}},
+		Usage: &dto.Usage{
+			PromptTokens:     4,
+			CompletionTokens: 2,
+			TotalTokens:      6,
+		},
+	}, info)
+	require.Len(t, finishResponses, 4)
+	assert.Equal(t, "content_block_stop", finishResponses[0].Type)
+	assert.Equal(t, 0, finishResponses[0].GetIndex())
+	assert.Equal(t, "content_block_stop", finishResponses[1].Type)
+	assert.Equal(t, 1, finishResponses[1].GetIndex())
+	assert.Equal(t, "message_delta", finishResponses[2].Type)
+	assert.Equal(t, "tool_use", *finishResponses[2].Delta.StopReason)
+	assert.Equal(t, "message_stop", finishResponses[3].Type)
+
+}
+func TestStreamResponseOpenAI2ClaudeKeepsFinalDeltaBeforeUsage(t *testing.T) {
+	info := &convmeta.Values{
+		SendResponseCount: 1,
+		ClaudeConvertInfo: &convmeta.ClaudeConvertInfo{
+			LastMessagesType: convmeta.LastMessageTypeNone,
+		},
+	}
+
+	responses := StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
+		Choices: []dto.ChatCompletionsStreamResponseChoice{
+			{
+				Delta: dto.ChatCompletionsStreamResponseChoiceDelta{
+					Content: ptr("last chunk"),
+				},
+				FinishReason: ptr("stop"),
+			},
+		},
+	}, info)
+	require.Len(t, responses, 3)
+	assert.Equal(t, "content_block_delta", responses[2].Type)
+	info.SendResponseCount = 2
+
+	assert.Equal(t, "last chunk", *responses[2].Delta.Text)
+
+	terminal := StreamResponseOpenAI2Claude(&dto.ChatCompletionsStreamResponse{
+		Usage: &dto.Usage{
+			PromptTokens:     4,
+			CompletionTokens: 2,
+			TotalTokens:      6,
+		},
+	}, info)
+	require.Len(t, terminal, 3)
+	assert.Equal(t, "content_block_stop", terminal[0].Type)
+	assert.Equal(t, "message_delta", terminal[1].Type)
+	require.NotNil(t, terminal[1].Usage)
+	assert.Equal(t, "message_stop", terminal[2].Type)
+}
+
 func TestNormalizeCacheCreationSplit(t *testing.T) {
 	cache5m, cache1h := NormalizeCacheCreationSplit(10, 3, 2)
 	assert.Equal(t, 8, cache5m)

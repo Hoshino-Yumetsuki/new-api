@@ -153,42 +153,46 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
 			state.LastMessagesType = convmeta.LastMessageTypeTools
 			state.ToolCallBaseIndex = 0
 			state.ToolCallMaxIndexOffset = 0
-			var toolCall dto.ToolCallResponse
+
+			var toolCalls []dto.ToolCallResponse
 			if len(openAIResponse.Choices) > 0 && len(openAIResponse.Choices[0].Delta.ToolCalls) > 0 {
-				toolCall = openAIResponse.Choices[0].Delta.ToolCalls[0]
-			} else {
-				first := openAIResponse.GetFirstToolCall()
-				if first != nil {
-					toolCall = *first
-				} else {
-					toolCall = dto.ToolCallResponse{}
+				toolCalls = openAIResponse.Choices[0].Delta.ToolCalls
+			} else if first := openAIResponse.GetFirstToolCall(); first != nil {
+				toolCalls = []dto.ToolCallResponse{*first}
+			}
+
+			for i, toolCall := range toolCalls {
+				offset := i
+				if toolCall.Index != nil {
+					offset = *toolCall.Index
+				}
+				if offset > state.ToolCallMaxIndexOffset {
+					state.ToolCallMaxIndexOffset = offset
+				}
+				idx := offset
+				resp := &dto.ClaudeResponse{
+					Type: "content_block_start",
+					ContentBlock: &dto.ClaudeMediaMessage{
+						Id:    toolCall.ID,
+						Type:  "tool_use",
+						Name:  toolCall.Function.Name,
+						Input: map[string]interface{}{},
+					},
+				}
+				resp.SetIndex(idx)
+				claudeResponses = append(claudeResponses, resp)
+				if toolCall.Function.Arguments != "" {
+					claudeResponses = append(claudeResponses, &dto.ClaudeResponse{
+						Index: &idx,
+						Type:  "content_block_delta",
+						Delta: &dto.ClaudeMediaMessage{
+							Type:        "input_json_delta",
+							PartialJson: &toolCall.Function.Arguments,
+						},
+					})
 				}
 			}
-			resp := &dto.ClaudeResponse{
-				Type: "content_block_start",
-				ContentBlock: &dto.ClaudeMediaMessage{
-					Id:    toolCall.ID,
-					Type:  "tool_use",
-					Name:  toolCall.Function.Name,
-					Input: map[string]interface{}{},
-				},
-			}
-			resp.SetIndex(0)
-			claudeResponses = append(claudeResponses, resp)
-			// 首块包含工具 delta，则追加 input_json_delta
-			if toolCall.Function.Arguments != "" {
-				idx := 0
-				claudeResponses = append(claudeResponses, &dto.ClaudeResponse{
-					Index: &idx,
-					Type:  "content_block_delta",
-					Delta: &dto.ClaudeMediaMessage{
-						Type:        "input_json_delta",
-						PartialJson: &toolCall.Function.Arguments,
-					},
-				})
-			}
-		} else {
-
+			state.Index = state.ToolCallBaseIndex + state.ToolCallMaxIndexOffset
 		}
 		// 判断首个响应是否存在内容（非标准的 OpenAI 响应）
 		if len(openAIResponse.Choices) > 0 {
@@ -298,14 +302,13 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
 	} else {
 		chosenChoice := openAIResponse.Choices[0]
 		doneChunk := chosenChoice.FinishReason != nil && *chosenChoice.FinishReason != ""
+		deferTerminal := false
 		if doneChunk {
 			state.FinishReason = *chosenChoice.FinishReason
-			oaiUsage := openAIResponse.Usage
-			if oaiUsage == nil {
-				oaiUsage = state.Usage
-				// Some upstreams emit finish_reason first, then send a final usage-only chunk.
-				// Defer closing until usage is available so the final message_delta carries it.
-				return claudeResponses
+			if openAIResponse.Usage == nil && state.Usage == nil {
+				// Some upstreams emit the final delta and finish_reason before usage.
+				// Keep this delta and defer terminal events to the usage-only chunk.
+				deferTerminal = true
 			}
 		}
 
@@ -413,7 +416,7 @@ func StreamResponseOpenAI2Claude(openAIResponse *dto.ChatCompletionsStreamRespon
 			claudeResponses = append(claudeResponses, &claudeResponse)
 		}
 
-		if doneChunk || state.Done {
+		if (!deferTerminal && doneChunk) || state.Done {
 			appendStopOpenBlocks()
 			oaiUsage := openAIResponse.Usage
 			if oaiUsage == nil {
@@ -452,11 +455,17 @@ func FinalizeStreamResponseOpenAI2Claude(info convmeta.Meta) []*dto.ClaudeRespon
 	if stopReason == "" {
 		stopReason = "end_turn"
 	}
+	usage := buildClaudeUsageFromOpenAIUsage(state.Usage)
+	if usage == nil {
+		usage = &dto.ClaudeUsage{
+			InputTokens: info.GetEstimatePromptTokens(),
+		}
+	}
 	responses := stopOpenBlocks(state)
 	responses = append(responses,
 		&dto.ClaudeResponse{
 			Type:  "message_delta",
-			Usage: buildClaudeUsageFromOpenAIUsage(state.Usage),
+			Usage: usage,
 			Delta: &dto.ClaudeMediaMessage{
 				StopReason: kitutil.GetPointer[string](stopReason),
 			},
