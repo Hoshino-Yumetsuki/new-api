@@ -9,6 +9,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
@@ -123,6 +124,10 @@ func formatUserLogs(logs []*Log, startIdx int) {
 			delete(otherMap, "admin_info")
 			// Remove operation-audit details (operator/route info), admin-only.
 			delete(otherMap, "audit_info")
+			if operation_setting.GetGeneralSetting().HideModelRedirectForNonAdmin {
+				delete(otherMap, "is_model_mapped")
+				delete(otherMap, "upstream_model_name")
+			}
 			// delete(otherMap, "reject_reason")
 			// delete(otherMap, "stream_status")
 		}

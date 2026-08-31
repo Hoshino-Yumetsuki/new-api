@@ -80,12 +80,14 @@ import type { LogCleanupTask } from '../types'
 
 const logSettingsSchema = z.object({
   LogConsumeEnabled: z.boolean(),
+  'general_setting.hide_model_redirect_for_non_admin': z.boolean(),
 })
 
 type LogSettingsFormValues = z.infer<typeof logSettingsSchema>
 
 type LogSettingsSectionProps = {
   defaultEnabled: boolean
+  defaultHideModelRedirectForNonAdmin: boolean
 }
 
 type ServerLogInfo = {
@@ -141,6 +143,7 @@ function isActiveLogCleanupTask(task: LogCleanupTask | null) {
 
 export function LogSettingsSection({
   defaultEnabled,
+  defaultHideModelRedirectForNonAdmin,
 }: LogSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
@@ -148,6 +151,8 @@ export function LogSettingsSection({
     resolver: zodResolver(logSettingsSchema),
     defaultValues: {
       LogConsumeEnabled: defaultEnabled,
+      'general_setting.hide_model_redirect_for_non_admin':
+        defaultHideModelRedirectForNonAdmin,
     },
   })
 
@@ -174,8 +179,12 @@ export function LogSettingsSection({
   }, [])
 
   useEffect(() => {
-    form.reset({ LogConsumeEnabled: defaultEnabled })
-  }, [defaultEnabled, form])
+    form.reset({
+      LogConsumeEnabled: defaultEnabled,
+      'general_setting.hide_model_redirect_for_non_admin':
+        defaultHideModelRedirectForNonAdmin,
+    })
+  }, [defaultEnabled, defaultHideModelRedirectForNonAdmin, form])
 
   useEffect(() => {
     fetchServerLogInfo()
@@ -257,11 +266,22 @@ export function LogSettingsSection({
   }, [logCleanupActive, logCleanupTaskId, t])
 
   const onSubmit = async (values: LogSettingsFormValues) => {
-    if (values.LogConsumeEnabled === defaultEnabled) return
-    await updateOption.mutateAsync({
-      key: 'LogConsumeEnabled',
-      value: values.LogConsumeEnabled,
-    })
+    const updates = [
+      {
+        key: 'LogConsumeEnabled',
+        value: values.LogConsumeEnabled,
+        defaultValue: defaultEnabled,
+      },
+      {
+        key: 'general_setting.hide_model_redirect_for_non_admin',
+        value: values['general_setting.hide_model_redirect_for_non_admin'],
+        defaultValue: defaultHideModelRedirectForNonAdmin,
+      },
+    ].filter((update) => update.value !== update.defaultValue)
+
+    for (const update of updates) {
+      await updateOption.mutateAsync({ key: update.key, value: update.value })
+    }
   }
 
   const handleRequestCleanLogs = () => {
@@ -353,6 +373,31 @@ export function LogSettingsSection({
                   <FormDescription>
                     {t(
                       'Track per-request consumption to power usage analytics. Keeping this on increases database writes.'
+                    )}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+                <FormMessage />
+              </SettingsSwitchItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name='general_setting.hide_model_redirect_for_non_admin'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>
+                    {t('Hide model redirect from non-admin users')}
+                  </FormLabel>
+                  <FormDescription>
+                    {t(
+                      'When enabled, non-admin users will not see request-to-upstream model mappings in usage log details.'
                     )}
                   </FormDescription>
                 </SettingsSwitchContent>

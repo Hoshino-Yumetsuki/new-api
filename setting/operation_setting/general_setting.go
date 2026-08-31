@@ -19,17 +19,19 @@ type GeneralSetting struct {
 	// 自定义货币符号，用于 CUSTOM 展示类型
 	CustomCurrencySymbol string `json:"custom_currency_symbol"`
 	// 自定义货币与美元汇率（1 USD = X Custom）
-	CustomCurrencyExchangeRate float64 `json:"custom_currency_exchange_rate"`
+	CustomCurrencyExchangeRate   float64 `json:"custom_currency_exchange_rate"`
+	HideModelRedirectForNonAdmin bool    `json:"hide_model_redirect_for_non_admin"`
 }
 
 // 默认配置
 var generalSetting = GeneralSetting{
-	DocsLink:                   "https://docs.newapi.pro",
-	PingIntervalEnabled:        false,
-	PingIntervalSeconds:        60,
-	QuotaDisplayType:           QuotaDisplayTypeUSD,
-	CustomCurrencySymbol:       "¤",
-	CustomCurrencyExchangeRate: 1.0,
+	DocsLink:                     "https://docs.newapi.pro",
+	PingIntervalEnabled:          false,
+	PingIntervalSeconds:          60,
+	QuotaDisplayType:             QuotaDisplayTypeUSD,
+	CustomCurrencySymbol:         "¤",
+	CustomCurrencyExchangeRate:   1.0,
+	HideModelRedirectForNonAdmin: false,
 }
 
 func init() {

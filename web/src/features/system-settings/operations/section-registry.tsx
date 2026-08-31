@@ -98,6 +98,9 @@ const OPERATIONS_SECTIONS = [
     build: (settings: OperationsSettings) => (
       <LogSettingsSection
         defaultEnabled={Boolean(settings.LogConsumeEnabled)}
+        defaultHideModelRedirectForNonAdmin={Boolean(
+          settings['general_setting.hide_model_redirect_for_non_admin']
+        )}
       />
     ),
   },
