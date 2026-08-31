@@ -27,12 +27,12 @@ describe('cache hit rate', () => {
     expect((getCacheHitRate(142007, 133632) * 100).toFixed(1)).toBe('94.1')
   })
 
-  test('uses Anthropic uncached, read, and created input as the denominator', () => {
+  test('uses uncached and read input tokens for Anthropic hit rates', () => {
     expect(
-      (
-        getCacheHitRate(2, 97147, 11269, 'billing-usage-anthropic') * 100
-      ).toFixed(1)
-    ).toBe('89.6')
+      (getCacheHitRate(24, 28, 16177, 'billing-usage-anthropic') * 100).toFixed(
+        1
+      )
+    ).toBe('53.8')
   })
 
   test('keeps non-Anthropic cache rates based on total input tokens', () => {

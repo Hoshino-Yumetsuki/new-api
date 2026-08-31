@@ -60,15 +60,15 @@ describe('cache hit rate display', () => {
     expect(value).toHaveTextContent('93.0%')
     expect(value).toHaveStyle({ color: 'var(--color-emerald-600)' })
   })
-  test('shows the Anthropic cache rate from uncached, read, and created input', () => {
+  test('shows Anthropic cache reads over uncached plus read input', () => {
     const rendered = renderCacheHitRate(
-      2,
-      97147,
-      11269,
+      24,
+      28,
+      16177,
       'billing-usage-anthropic'
     )
 
-    expect(rendered.container).toHaveTextContent('89.6%')
+    expect(rendered.container).toHaveTextContent('53.8%')
   })
 
   test('shows an em dash when the cache rate is zero', () => {
