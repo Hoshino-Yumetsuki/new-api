@@ -80,7 +80,9 @@ import type { LogCleanupTask } from '../types'
 
 const logSettingsSchema = z.object({
   LogConsumeEnabled: z.boolean(),
-  'general_setting.hide_model_redirect_for_non_admin': z.boolean(),
+  general_setting: z.object({
+    hide_model_redirect_for_non_admin: z.boolean(),
+  }),
 })
 
 type LogSettingsFormValues = z.infer<typeof logSettingsSchema>
@@ -151,8 +153,9 @@ export function LogSettingsSection({
     resolver: zodResolver(logSettingsSchema),
     defaultValues: {
       LogConsumeEnabled: defaultEnabled,
-      'general_setting.hide_model_redirect_for_non_admin':
-        defaultHideModelRedirectForNonAdmin,
+      general_setting: {
+        hide_model_redirect_for_non_admin: defaultHideModelRedirectForNonAdmin,
+      },
     },
   })
 
@@ -181,8 +184,9 @@ export function LogSettingsSection({
   useEffect(() => {
     form.reset({
       LogConsumeEnabled: defaultEnabled,
-      'general_setting.hide_model_redirect_for_non_admin':
-        defaultHideModelRedirectForNonAdmin,
+      general_setting: {
+        hide_model_redirect_for_non_admin: defaultHideModelRedirectForNonAdmin,
+      },
     })
   }, [defaultEnabled, defaultHideModelRedirectForNonAdmin, form])
 
@@ -274,7 +278,7 @@ export function LogSettingsSection({
       },
       {
         key: 'general_setting.hide_model_redirect_for_non_admin',
-        value: values['general_setting.hide_model_redirect_for_non_admin'],
+        value: values.general_setting.hide_model_redirect_for_non_admin,
         defaultValue: defaultHideModelRedirectForNonAdmin,
       },
     ].filter((update) => update.value !== update.defaultValue)
