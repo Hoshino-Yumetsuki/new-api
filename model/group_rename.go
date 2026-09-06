@@ -59,6 +59,27 @@ func validGroupName(name string) bool {
 	return name != "" && name == strings.TrimSpace(name) && utf8.RuneCountInString(name) <= 64 && name != "auto" && !strings.Contains(name, ",") && !strings.HasPrefix(name, "+:") && !strings.HasPrefix(name, "-:") && !strings.ContainsFunc(name, unicode.IsControl)
 }
 
+func groupHasLiveReferences(tx *gorm.DB, group string) (bool, error) {
+	queries := []*gorm.DB{
+		tx.Model(&User{}).Select("id").Where(commonGroupCol+" = ?", group).Limit(1),
+		tx.Model(&Token{}).Select("id").Where(commonGroupCol+" = ?", group).Limit(1),
+		ApplyChannelGroupFilter(tx.Model(&Channel{}).Select("id"), group).Limit(1),
+		tx.Model(&SubscriptionPlan{}).Select("id").Where("upgrade_group = ? OR downgrade_group = ?", group, group).Limit(1),
+		tx.Model(&UserSubscription{}).Select("id").Where("upgrade_group = ? OR prev_user_group = ? OR downgrade_group = ?", group, group, group).Limit(1),
+	}
+	for _, query := range queries {
+		var ids []int
+		result := query.Find(&ids)
+		if result.Error != nil {
+			return false, result.Error
+		}
+		if result.RowsAffected > 0 {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func UpdateGroupSettings(request GroupSettingsRequest) (GroupRenameResult, error) {
 	var result GroupRenameResult
 	if len(request.Options) == 0 {
@@ -214,10 +235,18 @@ func UpdateGroupSettings(request GroupSettingsRequest) (GroupRenameResult, error
 			}
 		}
 		for group := range currentGroups {
-			if _, remains := submittedGroups[group]; !remains {
-				if _, renamed := renamed[group]; !renamed {
-					return fmt.Errorf("group deletion requires explicit rename: %s", group)
-				}
+			if _, remains := submittedGroups[group]; remains {
+				continue
+			}
+			if _, renamed := renamed[group]; renamed {
+				continue
+			}
+			hasReferences, err := groupHasLiveReferences(tx, group)
+			if err != nil {
+				return err
+			}
+			if hasReferences {
+				return fmt.Errorf("group deletion requires explicit rename: %s", group)
 			}
 		}
 		for from, to := range renamed {

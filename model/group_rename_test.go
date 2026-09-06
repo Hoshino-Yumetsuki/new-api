@@ -76,12 +76,31 @@ func TestUpdateGroupSettingsRenamesLiveReferences(t *testing.T) {
 	assert.Equal(t, "new", subscription.DowngradeGroup)
 }
 
-func TestUpdateGroupSettingsRejectsUnpairedDeletionAndInvalidRename(t *testing.T) {
+func TestUpdateGroupSettingsAllowsUnpairedDeletionWithoutReferences(t *testing.T) {
+	previousOptionMap := common.OptionMap
+	common.OptionMap = make(map[string]string)
+	t.Cleanup(func() { common.OptionMap = previousOptionMap })
 	db := useFrontendOptionMigrationDB(t)
+	require.NoError(t, db.AutoMigrate(&User{}, &Token{}, &Channel{}, &Ability{}, &SubscriptionPlan{}, &UserSubscription{}))
 	require.NoError(t, db.Create(&Option{Key: "GroupRatio", Value: `{"old":1}`}).Error)
 	_, err := UpdateGroupSettings(GroupSettingsRequest{Options: map[string]string{"GroupRatio": `{}`}})
-	require.Error(t, err)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{}`, requireOptionValue(t, db, "GroupRatio"))
+}
+
+func TestUpdateGroupSettingsRejectsDeletionWithLiveReferences(t *testing.T) {
+	db := useFrontendOptionMigrationDB(t)
+	require.NoError(t, db.AutoMigrate(&User{}, &Token{}, &Channel{}, &Ability{}, &SubscriptionPlan{}, &UserSubscription{}))
+	require.NoError(t, db.Create(&Option{Key: "GroupRatio", Value: `{"old":1}`}).Error)
+	require.NoError(t, db.Create(&Channel{Id: 1001, Group: "old", Models: "gpt-4", Status: 1}).Error)
+	_, err := UpdateGroupSettings(GroupSettingsRequest{Options: map[string]string{"GroupRatio": `{}`}})
+	require.EqualError(t, err, "group deletion requires explicit rename: old")
 	assert.JSONEq(t, `{"old":1}`, requireOptionValue(t, db, "GroupRatio"))
+}
+
+func TestUpdateGroupSettingsRejectsInvalidRename(t *testing.T) {
+	db := useFrontendOptionMigrationDB(t)
+	require.NoError(t, db.Create(&Option{Key: "GroupRatio", Value: `{"old":1}`}).Error)
 	for _, rename := range []GroupRename{{From: "auto", To: "new"}, {From: "old,new", To: "new"}, {From: " old", To: "new"}, {From: strings.Repeat("x", 65), To: "new"}} {
 		_, err := UpdateGroupSettings(GroupSettingsRequest{Options: map[string]string{"GroupRatio": `{"new":1}`}, Renames: []GroupRename{rename}})
 		require.Error(t, err)
