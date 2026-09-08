@@ -5,8 +5,10 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestUpdateGroupSettingsRenamesLiveReferences(t *testing.T) {
@@ -121,4 +123,91 @@ func TestUpdateGroupSettingsRejectsConflictingRename(t *testing.T) {
 		Renames: []GroupRename{{From: "old", To: "new"}},
 	})
 	require.Error(t, err)
+}
+
+func useInitialGroupSettingsDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	previousOptions := common.OptionMap
+	previousRatios := ratio_setting.GroupRatio2JSONString()
+	previousRedis, previousMemory := common.RedisEnabled, common.MemoryCacheEnabled
+	t.Cleanup(func() {
+		common.OptionMap = previousOptions
+		common.RedisEnabled, common.MemoryCacheEnabled = previousRedis, previousMemory
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(previousRatios))
+		initCol()
+	})
+	common.OptionMap = make(map[string]string)
+	common.RedisEnabled, common.MemoryCacheEnabled = false, false
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1}`))
+	db := useFrontendOptionMigrationDB(t)
+	initCol()
+	connection, err := db.DB()
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, connection.Close()) })
+	require.NoError(t, db.AutoMigrate(&User{}, &Token{}, &Channel{}, &Ability{}, &SubscriptionPlan{}, &UserSubscription{}))
+	return db
+}
+
+func TestUpdateGroupSettingsFirstSavePersistsAndCanBeUpdated(t *testing.T) {
+	db := useInitialGroupSettingsDB(t)
+	require.NoError(t, db.Create(&User{Id: 1001, Username: "initial-user", Group: "default"}).Error)
+	for _, value := range []string{`{"default":1.25,"vip":0.8}`, `{"default":2,"vip":1}`} {
+		_, err := UpdateGroupSettings(GroupSettingsRequest{Options: map[string]string{"GroupRatio": value}})
+		require.NoError(t, err)
+		assert.JSONEq(t, value, requireOptionValue(t, db, "GroupRatio"))
+		assert.JSONEq(t, value, ratio_setting.GroupRatio2JSONString())
+	}
+	var count int64
+	require.NoError(t, db.Model(&Option{}).Where(&Option{Key: "GroupRatio"}).Count(&count).Error)
+	assert.EqualValues(t, 1, count)
+	var user User
+	require.NoError(t, db.First(&user, 1001).Error)
+	assert.Equal(t, "default", user.Group)
+}
+
+func TestUpdateGroupSettingsInitialStatePreservesReferencesAndStoredValues(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		stored    *string
+		userGroup string
+		submitted string
+		renames   []GroupRename
+		wantError bool
+		wantGroup string
+	}{
+		{name: "missing row cannot delete a referenced default group", userGroup: "default", submitted: `{"vip":1}`, wantError: true, wantGroup: "default"},
+		{name: "missing row can rename a default group", userGroup: "default", submitted: `{"primary":1,"vip":1}`, renames: []GroupRename{{From: "default", To: "primary"}}, wantGroup: "primary"},
+		{name: "stored empty string is not a missing row", stored: common.GetPointer(""), userGroup: "default", submitted: `{"default":2,"vip":1}`, wantError: true, wantGroup: "default"},
+		{name: "stored malformed JSON is not replaced", stored: common.GetPointer(`{invalid}`), userGroup: "default", submitted: `{"default":2,"vip":1}`, wantError: true, wantGroup: "default"},
+		{name: "stored empty map does not regain runtime groups", stored: common.GetPointer(`{}`), userGroup: "default", submitted: `{"primary":1,"vip":1}`, renames: []GroupRename{{From: "default", To: "primary"}}, wantError: true, wantGroup: "default"},
+		{name: "stored groups override runtime defaults", stored: common.GetPointer(`{"saved":1}`), userGroup: "saved", submitted: `{"primary":1}`, renames: []GroupRename{{From: "saved", To: "primary"}}, wantGroup: "primary"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			db := useInitialGroupSettingsDB(t)
+			if test.stored != nil {
+				require.NoError(t, db.Create(&Option{Key: "GroupRatio", Value: *test.stored}).Error)
+			}
+			require.NoError(t, db.Create(&User{Id: 1001, Username: "initial-user", Group: test.userGroup}).Error)
+			result, err := UpdateGroupSettings(GroupSettingsRequest{
+				Options: map[string]string{"GroupRatio": test.submitted},
+				Renames: test.renames,
+			})
+			if test.wantError {
+				require.Error(t, err)
+				if test.stored == nil {
+					requireOptionMissing(t, db, "GroupRatio")
+				} else {
+					assert.Equal(t, *test.stored, requireOptionValue(t, db, "GroupRatio"))
+				}
+				assert.JSONEq(t, `{"default":1,"vip":1}`, ratio_setting.GroupRatio2JSONString())
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, 1, result.Users)
+				assert.JSONEq(t, test.submitted, requireOptionValue(t, db, "GroupRatio"))
+			}
+			var user User
+			require.NoError(t, db.First(&user, 1001).Error)
+			assert.Equal(t, test.wantGroup, user.Group)
+		})
+	}
 }

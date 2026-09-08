@@ -7,6 +7,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"gorm.io/gorm"
 )
 
@@ -222,8 +223,13 @@ func UpdateGroupSettings(request GroupSettingsRequest) (GroupRenameResult, error
 		}
 
 		var currentGroups map[string]float64
-		if err := common.UnmarshalJsonStr(currentOptions["GroupRatio"], &currentGroups); err != nil {
-			return fmt.Errorf("invalid stored group ratio: %w", err)
+		if value, exists := currentOptions["GroupRatio"]; exists {
+			if err := common.UnmarshalJsonStr(value, &currentGroups); err != nil {
+				return fmt.Errorf("invalid stored group ratio: %w", err)
+			}
+		} else {
+			// Built-in groups are active before the first GroupRatio row is saved.
+			currentGroups = ratio_setting.GetGroupRatioCopy()
 		}
 		var submittedGroups map[string]float64
 		if err := common.UnmarshalJsonStr(finalOptions["GroupRatio"], &submittedGroups); err != nil {
