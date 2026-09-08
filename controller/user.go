@@ -692,7 +692,7 @@ func GetUserModels(c *gin.Context) {
 			groupsToQuery = append(groupsToQuery, g)
 		}
 	case group == "auto":
-		if _, ok := groups[group]; ok {
+		if setting.AutoGroupEnabled {
 			groupsToQuery = service.GetUserAutoGroup(user.Group)
 		}
 	default:

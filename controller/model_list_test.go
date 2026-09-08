@@ -218,17 +218,21 @@ func TestGetUserModelsFiltersByRequestedGroup(t *testing.T) {
 func TestGetUserModelsExpandsAutoGroupsInConfiguredOrder(t *testing.T) {
 	originalAutoGroups := setting.AutoGroups2JsonString()
 	originalUsableGroups := setting.UserUsableGroups2JSONString()
+	originalRatios := ratio_setting.GroupRatio2JSONString()
+	originalEnabled := setting.AutoGroupEnabled
 	originalSpecialGroups := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup.ReadAll()
 	t.Cleanup(func() {
 		require.NoError(t, setting.UpdateAutoGroupsByJsonString(originalAutoGroups))
 		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(originalUsableGroups))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(originalRatios))
+		setting.AutoGroupEnabled = originalEnabled
 		specialGroups := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup
 		specialGroups.Clear()
 		specialGroups.AddAll(originalSpecialGroups)
 	})
 
 	require.NoError(t, setting.UpdateAutoGroupsByJsonString(`["vip","default","unavailable"]`))
-	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"auto":"自动分组","default":"默认分组","unavailable":"不可用分组"}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":2,"unavailable":1,"manual":1}`))
 	specialGroups := ratio_setting.GetGroupRatioSetting().GroupSpecialUsableGroup
 	specialGroups.Clear()
 	specialGroups.Set("default", map[string]string{
@@ -250,19 +254,51 @@ func TestGetUserModelsExpandsAutoGroupsInConfiguredOrder(t *testing.T) {
 		{Group: "default", Model: "zz-default-model", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-shared-model", ChannelId: 2, Enabled: true},
 		{Group: "unavailable", Model: "zz-unavailable-model", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "zz-disabled-model", ChannelId: 1, Enabled: false},
+		{Group: "manual", Model: "zz-manual-model", ChannelId: 1, Enabled: true},
 	}).Error)
 
-	recorder := httptest.NewRecorder()
-	context, _ := gin.CreateTestContext(recorder)
-	context.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=auto", nil)
-	context.Set("id", 1003)
+	for _, test := range []struct {
+		name         string
+		enabled      bool
+		usableGroups string
+	}{
+		{
+			name:         "enabled without a literal auto group",
+			enabled:      true,
+			usableGroups: `{"default":"Default","unavailable":"Unavailable","manual":"Manual"}`,
+		},
+		{
+			name:         "enabled with a legacy auto group",
+			enabled:      true,
+			usableGroups: `{"auto":"Auto","default":"Default","unavailable":"Unavailable","manual":"Manual"}`,
+		},
+		{
+			name:         "disabled with a legacy auto group",
+			enabled:      false,
+			usableGroups: `{"auto":"Auto","default":"Default","unavailable":"Unavailable","manual":"Manual"}`,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			setting.AutoGroupEnabled = test.enabled
+			require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(test.usableGroups))
+			recorder := httptest.NewRecorder()
+			context, _ := gin.CreateTestContext(recorder)
+			context.Request = httptest.NewRequest(http.MethodGet, "/api/user/models?group=auto", nil)
+			context.Set("id", 1003)
 
-	GetUserModels(context)
+			GetUserModels(context)
 
-	models := decodeUserModelsResponse(t, recorder)
-	require.Len(t, models, 3)
-	assert.ElementsMatch(t, []string{"zz-vip-model", "zz-shared-model"}, models[:2])
-	assert.Equal(t, "zz-default-model", models[2])
+			models := decodeUserModelsResponse(t, recorder)
+			if !test.enabled {
+				assert.Empty(t, models)
+				return
+			}
+			require.Len(t, models, 3)
+			assert.ElementsMatch(t, []string{"zz-vip-model", "zz-shared-model"}, models[:2])
+			assert.Equal(t, "zz-default-model", models[2])
+		})
+	}
 }
 
 func TestListModelsIncludesTieredBillingModel(t *testing.T) {
