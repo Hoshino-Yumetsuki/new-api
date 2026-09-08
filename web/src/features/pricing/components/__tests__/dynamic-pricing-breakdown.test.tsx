@@ -22,7 +22,7 @@ import { describe, expect, test } from 'vitest'
 import { DynamicPricingBreakdown } from '../dynamic-pricing-breakdown'
 
 describe('dynamic pricing breakdown', () => {
-  test('merges time multipliers into the tier table with adjusted prices', () => {
+  test('keeps base prices unchanged and distinguishes unmatched request rules', () => {
     render(
       <DynamicPricingBreakdown
         billingExpr='tier("time_based", p * 1.5 + c * 4.5 + cr * 0.05)'
@@ -36,18 +36,16 @@ describe('dynamic pricing breakdown', () => {
       />
     )
 
-    expect(screen.queryByText('Conditional multipliers')).not.toBeInTheDocument()
+    expect(screen.getByText('2x')).toBeVisible()
+    expect(screen.queryByText('Matched')).not.toBeInTheDocument()
 
     const table = screen.getByRole('table')
-    expect(within(table).getByRole('columnheader', { name: 'Multiplier' })).toBeInTheDocument()
 
     const rows = within(table).getAllByRole('row')
-    expect(rows).toHaveLength(3)
-    expect(within(rows[1]).getByText('1x')).toBeInTheDocument()
+    expect(rows).toHaveLength(2)
     expect(within(rows[1]).getByText('$1.5000')).toBeInTheDocument()
     expect(within(rows[1]).getByText('$4.5000')).toBeInTheDocument()
-    expect(within(rows[2]).getByText('2x')).toBeInTheDocument()
-    expect(within(rows[2]).getByText('$3.0000')).toBeInTheDocument()
-    expect(within(rows[2]).getByText('$9.0000')).toBeInTheDocument()
+    expect(within(table).queryByText('$3.0000')).not.toBeInTheDocument()
+    expect(within(table).queryByText('$9.0000')).not.toBeInTheDocument()
   })
 })

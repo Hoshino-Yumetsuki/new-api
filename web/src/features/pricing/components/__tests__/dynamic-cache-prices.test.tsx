@@ -75,7 +75,12 @@ describe('dynamic cache prices in model square', () => {
     render(<PricingTable models={[model]} tokenUnit='M' />)
     const table = screen.getByRole('table')
 
-    expect(table).toHaveTextContent(/\$1\/\$2/)
+    expect(within(table).getByText('Input').parentElement).toHaveTextContent(
+      /Input\s*1$/
+    )
+    expect(within(table).getByText('Output').parentElement).toHaveTextContent(
+      /Output\s*2$/
+    )
     expect(table).toHaveTextContent(/Cached/)
     expect(table).toHaveTextContent(/\$0\.1/)
     expect(table).not.toHaveTextContent(/Cache Read|Cache Write|1h/)
