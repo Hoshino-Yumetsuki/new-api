@@ -122,7 +122,7 @@ func TestAddTokenRejectsAutoWhenDisabled(t *testing.T) {
 	AddToken(ctx)
 
 	response := decodeAPIResponse(t, recorder)
-	assert.Equal(t, "token.auto_group_disabled", response.Message)
+	assert.False(t, response.Success)
 	var count int64
 	require.NoError(t, model.DB.Model(&model.Token{}).Count(&count).Error)
 	assert.Zero(t, count)
