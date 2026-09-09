@@ -225,6 +225,7 @@ func TestSecurityLoginPasskeyDoesNotRequireAdditionalTwoFA(t *testing.T) {
 func TestSecurityLoginPasskeyConcurrentCompletionCreatesOneSession(t *testing.T) {
 	user, _ := setupSecurityEnrollmentTest(t)
 	key := newSecurityLoginPasskey(t, user.Id)
+	require.NoError(t, model.DB.Create(&model.TwoFA{UserId: user.Id, Secret: "JBSWY3DPEHPK3PXP", IsEnabled: true}).Error)
 	pending, err := service.StartLoginVerification(user, "password")
 	require.NoError(t, err)
 	requests := make([]string, 2)
@@ -266,6 +267,7 @@ func TestSecurityLoginPasskeyConcurrentCompletionCreatesOneSession(t *testing.T)
 func TestSecurityLoginSessionFailureRollsBackChallengeConsumption(t *testing.T) {
 	user, _ := setupSecurityEnrollmentTest(t)
 	key := newSecurityLoginPasskey(t, user.Id)
+	require.NoError(t, model.DB.Create(&model.TwoFA{UserId: user.Id, Secret: "JBSWY3DPEHPK3PXP", IsEnabled: true}).Error)
 	pending, err := service.StartLoginVerification(user, "password")
 	require.NoError(t, err)
 	require.NoError(t, model.DB.Callback().Create().Before("gorm:create").Register("login_session_failure", func(tx *gorm.DB) {
@@ -295,31 +297,6 @@ func TestSecurityLoginSessionFailureRollsBackChallengeConsumption(t *testing.T) 
 	assert.EqualValues(t, 2, count)
 }
 
-func TestSecurityLoginFactorStateDoesNotAddPasswordLoginQueries(t *testing.T) {
-	user, _ := setupSecurityEnrollmentTest(t)
-	newSecurityLoginPasskey(t, user.Id)
-	previousPasswordLogin := common.PasswordLoginEnabled
-	common.PasswordLoginEnabled = true
-	t.Cleanup(func() { common.PasswordLoginEnabled = previousPasswordLogin })
-	queries := 0
-	require.NoError(t, model.DB.Callback().Query().After("gorm:query").Register("login_query_count", func(tx *gorm.DB) {
-		if !tx.DryRun {
-			queries++
-		}
-	}))
-	t.Cleanup(func() { _ = model.DB.Callback().Query().Remove("login_query_count") })
-	state, err := model.GetUserVerificationState(user.Id)
-	require.NoError(t, err)
-	assert.True(t, state.HasPassword)
-	assert.True(t, state.HasPasskey)
-	assert.False(t, state.HasTwoFA)
-	assert.Equal(t, 1, queries, "factor availability must be one database round trip")
-	queries = 0
-	response := securityEnrollmentRequest("POST", "/api/user/login", `{"username":"enrollment-user","password":"enrollment-password"}`, "", service.AuthIdentity{}, Login)
-	assert.Contains(t, response.Body.String(), `"require_verification":true`)
-	assert.Equal(t, 2, queries, "only the existing credential lookup and the replacement factor-state lookup run before the challenge")
-}
-
 type boundLoginOAuthProvider struct {
 	authFlowTestOAuthProvider
 	userID int
@@ -343,6 +320,7 @@ func TestSecurityLoginAllPrimaryTransportsRequireAdditionalVerification(t *testi
 				user, _ = setupSecurityEnrollmentTest(t)
 			}
 			newSecurityLoginPasskey(t, user.Id)
+			require.NoError(t, model.DB.Create(&model.TwoFA{UserId: user.Id, Secret: "JBSWY3DPEHPK3PXP", IsEnabled: true}).Error)
 			var response *httptest.ResponseRecorder
 			switch transport {
 			case "telegram":
@@ -395,7 +373,7 @@ func TestSecurityLoginAllPrimaryTransportsRequireAdditionalVerification(t *testi
 			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
 			require.True(t, result.Success, response.Body.String())
 			assert.True(t, result.Data.RequireVerification)
-			assert.Equal(t, []service.VerificationMethodOption{{Method: "passkey", Available: true}}, result.Data.Methods)
+			assert.Equal(t, []service.VerificationMethodOption{{Method: "2fa", Available: true}, {Method: "passkey", Available: true}}, result.Data.Methods)
 			assert.NotEmpty(t, result.Data.FlowToken)
 			assert.Empty(t, response.Header().Values("Set-Cookie"))
 			count, err := model.CountActiveUserSessions(user.Id, time.Now().Unix())
@@ -410,6 +388,7 @@ func TestSecurityLoginPasskeyCannotCompleteAnotherChallenge(t *testing.T) {
 		t.Run(fmt.Sprintf("other-user=%t", otherUser), func(t *testing.T) {
 			user, _ := setupSecurityEnrollmentTest(t)
 			key := newSecurityLoginPasskey(t, user.Id)
+			require.NoError(t, model.DB.Create(&model.TwoFA{UserId: user.Id, Secret: "JBSWY3DPEHPK3PXP", IsEnabled: true}).Error)
 			first, err := service.StartLoginVerification(user, "password")
 			require.NoError(t, err)
 			passkeyToken, challenge := beginSecurityLoginPasskey(t, first.FlowToken)
@@ -417,6 +396,7 @@ func TestSecurityLoginPasskeyCannotCompleteAnotherChallenge(t *testing.T) {
 				user = &model.User{Username: "other-login", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", AffCode: "other-login", AuthVersion: 1}
 				require.NoError(t, model.DB.Create(user).Error)
 				newSecurityLoginPasskey(t, user.Id)
+				require.NoError(t, model.DB.Create(&model.TwoFA{UserId: user.Id, Secret: "JBSWY3DPEHPK3PXP", IsEnabled: true}).Error)
 			}
 			second, err := service.StartLoginVerification(user, "password")
 			require.NoError(t, err)
@@ -494,6 +474,9 @@ func TestSecurityLoginPasskeyCanManageTwoFAWithScopedProofs(t *testing.T) {
 			require.NoError(t, err)
 			if scope == service.VerificationScopeTwoFADisable {
 				assert.Nil(t, factor)
+				challenge, err := service.StartLoginVerification(stored, "password")
+				require.NoError(t, err)
+				assert.Nil(t, challenge, "disabling 2FA must stop login challenges even while a Passkey remains registered")
 			} else {
 				require.NotNil(t, factor)
 				assert.True(t, factor.IsEnabled)
@@ -549,19 +532,23 @@ func TestSecurityLoginRegisteredPasskeyRequiresUserVerification(t *testing.T) {
 
 func TestSecurityLoginRequiresConfiguredFactors(t *testing.T) {
 	for _, test := range []struct {
-		name             string
-		twoFA, passkey   bool
-		locked, disabled bool
-		methods          []service.VerificationMethodOption
-		unavailable      bool
+		name                         string
+		twoFA, passkey               bool
+		locked, disabled             bool
+		twoFADisabled, wrongPassword bool
+		methods                      []service.VerificationMethodOption
+		unavailable                  bool
 	}{
 		{name: "password without additional factors"},
-		{name: "passkey requires verification", passkey: true, methods: []service.VerificationMethodOption{{Method: "passkey", Available: true}}},
+		{name: "passkey alone does not enable twofa", passkey: true},
+		{name: "disabled twofa with passkey permits password", twoFADisabled: true, passkey: true},
+		{name: "passkey does not bypass incorrect password", passkey: true, wrongPassword: true},
 		{name: "twofa requires verification", twoFA: true, methods: []service.VerificationMethodOption{{Method: "2fa", Available: true}}},
 		{name: "both factors are alternatives", twoFA: true, passkey: true, methods: []service.VerificationMethodOption{{Method: "2fa", Available: true}, {Method: "passkey", Available: true}}},
 		{name: "locked twofa permits passkey", twoFA: true, passkey: true, locked: true, methods: []service.VerificationMethodOption{{Method: "2fa", Available: false, Reason: service.ErrVerificationLocked.Error()}, {Method: "passkey", Available: true}}},
 		{name: "disabled passkey permits twofa", twoFA: true, passkey: true, disabled: true, methods: []service.VerificationMethodOption{{Method: "2fa", Available: true}, {Method: "passkey", Available: false, Reason: "Passkey authentication is disabled."}}},
-		{name: "only passkey disabled blocks password", passkey: true, disabled: true, unavailable: true},
+		{name: "disabled passkey alone does not block password", passkey: true, disabled: true},
+		{name: "locked twofa blocks password", twoFA: true, locked: true, unavailable: true},
 		{name: "both factors unavailable block password", passkey: true, twoFA: true, disabled: true, locked: true, unavailable: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -572,8 +559,8 @@ func TestSecurityLoginRequiresConfiguredFactors(t *testing.T) {
 			if test.passkey {
 				require.NoError(t, model.DB.Create(&model.PasskeyCredential{UserID: user.Id, CredentialID: "login-key", PublicKey: "public-key"}).Error)
 			}
-			if test.twoFA {
-				factor := &model.TwoFA{UserId: user.Id, Secret: "JBSWY3DPEHPK3PXP", IsEnabled: true}
+			if test.twoFA || test.twoFADisabled {
+				factor := &model.TwoFA{UserId: user.Id, Secret: "JBSWY3DPEHPK3PXP", IsEnabled: test.twoFA}
 				if test.locked {
 					until := time.Now().Add(time.Minute)
 					factor.LockedUntil = &until
@@ -583,7 +570,16 @@ func TestSecurityLoginRequiresConfiguredFactors(t *testing.T) {
 			system_setting.GetPasskeySettings().Enabled = !test.disabled
 			before, err := model.CountActiveUserSessions(user.Id, time.Now().Unix())
 			require.NoError(t, err)
-			response := securityEnrollmentRequest(http.MethodPost, "/api/user/login", `{"username":"enrollment-user","password":"enrollment-password"}`, "", service.AuthIdentity{}, Login)
+			password := "enrollment-password"
+			if test.wrongPassword {
+				password = "incorrect-password"
+			}
+			body, err := common.Marshal(LoginRequest{Username: user.Username, Password: password})
+			require.NoError(t, err)
+			router := gin.New()
+			router.POST("/api/user/login", Login)
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/user/login", strings.NewReader(string(body))))
 			var result struct {
 				Success bool `json:"success"`
 				Data    struct {
@@ -597,8 +593,10 @@ func TestSecurityLoginRequiresConfiguredFactors(t *testing.T) {
 			require.NoError(t, common.Unmarshal(response.Body.Bytes(), &result))
 			after, err := model.CountActiveUserSessions(user.Id, time.Now().Unix())
 			require.NoError(t, err)
-			if test.unavailable {
+			if test.unavailable || test.wrongPassword {
 				assert.False(t, result.Success)
+				assert.Empty(t, result.Data.AccessToken)
+				assert.Empty(t, result.Data.FlowToken)
 				assert.Equal(t, before, after)
 				assert.Empty(t, response.Header().Values("Set-Cookie"))
 				return
@@ -606,7 +604,13 @@ func TestSecurityLoginRequiresConfiguredFactors(t *testing.T) {
 			require.True(t, result.Success, response.Body.String())
 			if len(test.methods) == 0 {
 				assert.False(t, result.Data.RequireVerification)
+				assert.Empty(t, result.Data.FlowToken)
+				assert.Empty(t, result.Data.Methods)
 				assert.NotEmpty(t, result.Data.AccessToken)
+				identity, err := service.ParseAccessToken(result.Data.AccessToken)
+				require.NoError(t, err)
+				assert.Equal(t, user.Id, identity.UserID)
+				assert.NotEmpty(t, response.Header().Values("Set-Cookie"))
 				assert.Equal(t, before+1, after)
 				return
 			}

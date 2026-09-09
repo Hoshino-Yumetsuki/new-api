@@ -151,6 +151,8 @@ PAT 不是浏览器登录会话，不能调用登录会话管理接口，也不�
 
 OAuth state、2FA pending、Passkey ceremony、Telegram bind 等临时状态存放在 `auth_flows`。客户端只持有随机 `flow_token`，数据库仅保存 HMAC 摘要；流程具有用途、provider、intent、用户和登录会话绑定，并且只能原子消费一次。OAuth 注册的 affiliate code 也随登录 AuthFlow 保存。
 
+密码、OAuth、WeChat 和 Telegram 完成主认证后，仅在用户启用了两步验证（2FA）时要求额外验证；可使用验证码或已注册且可用的 Passkey，全部验证方式不可用时拒绝登录。仅注册 Passkey 不会自动启用两步验证；未启用或已禁用 2FA 时，正确密码可直接登录，即使仍保留 Passkey。直接使用 Passkey 登录仍要求完成用户验证（UV），无需额外输入 2FA 验证码。敏感操作的 `X-Security-Proof` 策略独立于此登录开关，保持不变。
+
 标准 OAuth 绑定回调由 popup 通过同源 `postMessage` 交给 opener；只有 opener 使用自身内存中的 Bearer 调用后端绑定接口。Telegram 绑定先由已登录前端创建绑定 AuthFlow，再让 widget 回调携带路径中的 `flow_token`，回调时会重新确认原登录会话仍有效。Telegram 的已签名 widget assertion 也会登记为一次性凭据，重复回放会被拒绝。
 
 敏感操作使用有效期 5 分钟的 `X-Security-Proof`：

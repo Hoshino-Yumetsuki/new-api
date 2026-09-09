@@ -144,7 +144,7 @@ func recordLoginAudit(user *model.User, c *gin.Context) {
 }
 
 // setupLogin evaluates the shared login policy after primary authentication.
-// Only a completed Passkey ceremony may go directly to session issuance.
+// Additional verification is required only when two-factor authentication is enabled.
 func setupLogin(user *model.User, c *gin.Context) {
 	challenge, err := service.StartLoginVerification(user, loginMethodFromContext(c))
 	if err != nil {

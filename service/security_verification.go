@@ -170,6 +170,10 @@ type VerificationRequirements struct {
 // securityVerificationPolicy is the only operation-to-method policy. Device
 // support and disabled providers never turn an enrolled factor into an absent one.
 func securityVerificationPolicy(scope string, state model.UserVerificationState) ([]VerificationMethodOption, error) {
+	// Registering a Passkey does not opt the user into two-step login verification.
+	if scope == VerificationScopeLogin && !state.HasTwoFA {
+		return nil, nil
+	}
 	var methods []string
 	if state.HasTwoFA {
 		methods = append(methods, VerificationMethodTwoFA)
