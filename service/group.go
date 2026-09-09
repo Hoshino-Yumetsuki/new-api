@@ -41,6 +41,10 @@ func GetUserUsableGroups(userGroup string) map[string]string {
 }
 
 func GroupInUserUsableGroups(userGroup, groupName string) bool {
+	// Auto is a selectable pseudo-group exposed separately when enabled.
+	if groupName == "auto" {
+		return setting.AutoGroupEnabled
+	}
 	_, ok := GetUserUsableGroups(userGroup)[groupName]
 	return ok
 }

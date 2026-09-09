@@ -70,3 +70,16 @@ func TestGetRequestAutoGroupsDoesNotFallBackAfterPermissionChange(t *testing.T) 
 
 	assert.Empty(t, groups)
 }
+
+func TestGroupInUserUsableGroupsAcceptsAutoOnlyWhenEnabled(t *testing.T) {
+	originalEnabled := setting.AutoGroupEnabled
+	t.Cleanup(func() {
+		setting.AutoGroupEnabled = originalEnabled
+	})
+
+	setting.AutoGroupEnabled = true
+	assert.True(t, GroupInUserUsableGroups("default", "auto"))
+
+	setting.AutoGroupEnabled = false
+	assert.False(t, GroupInUserUsableGroups("default", "auto"))
+}
