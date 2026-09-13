@@ -89,7 +89,7 @@ export function Hero(props: HeroProps) {
       <div className='editorial-hero-grid' aria-hidden='true' />
 
       <div className='relative z-10 mx-auto grid w-full max-w-6xl grid-cols-1 items-center gap-12 lg:grid-cols-12 lg:gap-8'>
-        <div className='flex min-w-0 flex-col justify-center lg:col-span-6 lg:border-r lg:pr-8'>
+        <div className='editorial-hero-copy flex min-w-0 flex-col justify-center lg:col-span-6 lg:border-r lg:pr-8'>
           <p className='editorial-label'>§ 01 · {t('Unified AI access')}</p>
           <h1
             id='home-hero-title'
@@ -98,13 +98,13 @@ export function Hero(props: HeroProps) {
             <span>{t('One gateway for AI coding')}</span>
             <span className='editorial-caret' aria-hidden='true' />
           </h1>
-          <p className='text-muted-foreground mt-6 max-w-xl text-base leading-8 sm:text-lg'>
+          <p className='editorial-hero-description text-muted-foreground mt-6 max-w-xl text-base leading-8 sm:text-lg'>
             {t(
               'Use the same endpoint and key across IDE extensions, CLI tools, and web clients.'
             )}
           </p>
 
-          <div className='mt-9 flex flex-wrap items-center gap-3'>
+          <div className='editorial-hero-actions mt-9 flex flex-wrap items-center gap-3'>
             <Button
               className='editorial-primary-button group inline-flex h-[3.25rem] rounded-[1px] px-7 text-[15px] font-medium'
               render={<Link to={primaryPath} />}
@@ -129,7 +129,7 @@ export function Hero(props: HeroProps) {
             </Button>
           </div>
 
-          <div className='editorial-endpoint-panel editorial-rule mt-10 max-w-2xl border p-4 sm:p-5'>
+          <div className='editorial-hero-meta editorial-endpoint-panel editorial-rule mt-10 max-w-2xl border p-4 sm:p-5'>
             <p className='text-muted-foreground font-mono text-[10px] tracking-[0.18em] uppercase'>
               {t('Replace the base URL to connect')}
             </p>
@@ -168,7 +168,7 @@ export function Hero(props: HeroProps) {
             </div>
           </div>
 
-          <div className='mt-4 flex flex-wrap items-center gap-4'>
+          <div className='editorial-hero-meta mt-4 flex flex-wrap items-center gap-4'>
             <Button
               variant='ghost'
               className='group h-8 gap-1.5 px-2.5 text-sm'

@@ -813,8 +813,32 @@ For commercial licensing, please contact support@quantumnous.com
   );
 }
 
+.editorial-hero-copy > .editorial-label {
+  animation: editorial-fade-in 0.38s 0.12s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 .editorial-hero-title {
-  animation: editorial-title-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: editorial-title-write 0.68s 0.32s cubic-bezier(0.65, 0, 0.35, 1)
+    both;
+}
+
+.editorial-hero-description {
+  animation: editorial-fade-in 0.44s 0.64s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.editorial-hero-actions {
+  animation: editorial-actions-in 0.62s 0.78s cubic-bezier(0.65, 0, 0.35, 1)
+    both;
+}
+
+.editorial-hero-meta {
+  animation: editorial-fade-in 0.44s 0.92s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.editorial-hero-copy:focus-within > * {
+  opacity: 1 !important;
+  clip-path: none !important;
+  transform: none !important;
 }
 
 .editorial-caret {
@@ -824,17 +848,35 @@ For commercial licensing, please contact support@quantumnous.com
   margin-left: 7px;
   vertical-align: -4px;
   background: var(--editorial-accent);
-  animation: editorial-caret-blink 1.6s step-end infinite;
+  animation: editorial-caret-blink 1.6s 1.08s step-end infinite;
 }
 
-@keyframes editorial-title-in {
+@keyframes editorial-title-write {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+
+@keyframes editorial-fade-in {
   from {
     opacity: 0;
-    transform: translateY(14px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+  }
+}
+
+@keyframes editorial-actions-in {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
   }
 }
 
@@ -1105,12 +1147,15 @@ For commercial licensing, please contact support@quantumnous.com
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .editorial-hero-title,
+  .editorial-hero-copy > *,
   .editorial-caret,
   .editorial-reveal,
+  .editorial-endpoint-path,
   .editorial-triad-lobe {
     animation: none !important;
     transform: none !important;
+    clip-path: none !important;
+    opacity: 1;
   }
 
   .editorial-caret {
