@@ -15,6 +15,28 @@
     />
 
     <meta name="theme-color" content="#fff" />
+    <script>
+      (() => {
+        try {
+          const storedTheme = document.cookie.match(
+            /(?:^|;\s*)vite-ui-theme=([^;]*)/
+          )?.[1]
+          const theme = ['dark', 'light', 'system'].includes(storedTheme ?? '')
+            ? storedTheme
+            : 'system'
+          const resolvedTheme =
+            theme === 'system'
+              ? window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+              : theme
+          document.documentElement.classList.add(resolvedTheme)
+        } catch {
+          document.documentElement.classList.add('light')
+        }
+      })()
+    </script>
+
     <!--umami-->
     <!--Google Analytics-->
   </head>
