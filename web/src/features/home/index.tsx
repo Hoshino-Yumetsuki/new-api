@@ -20,14 +20,43 @@ import { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PublicLayout } from '@/components/layout'
-import { Footer } from '@/components/layout/components/footer'
 import { RichContent } from '@/components/rich-content'
 import { useTheme } from '@/context/theme-provider'
+import type { SystemStatus } from '@/features/auth/types'
+import { useStatus } from '@/hooks/use-status'
 import { isLikelyHtml } from '@/lib/content-format'
 import { useAuthStore } from '@/stores/auth-store'
 
-import { CTA, Features, Hero, HowItWorks, Stats } from './components'
+import { Advantages } from './components/sections/advantages'
+import { CTA } from './components/sections/cta'
+import { Ecosystem } from './components/sections/ecosystem'
+import { Hero } from './components/sections/hero'
+import { QuickPaths } from './components/sections/quick-paths'
 import { useHomePageContent } from './hooks'
+
+function readStatusString(
+  status: SystemStatus | null,
+  key: string
+): string | undefined {
+  const directValue = status?.[key]
+  if (typeof directValue === 'string' && directValue.trim()) {
+    return directValue.trim()
+  }
+
+  const nestedValue = status?.data?.[key]
+  if (typeof nestedValue === 'string' && nestedValue.trim()) {
+    return nestedValue.trim()
+  }
+
+  return undefined
+}
+
+function isRegistrationEnabled(status: SystemStatus | null): boolean {
+  return (
+    status?.register_enabled !== false &&
+    status?.data?.register_enabled !== false
+  )
+}
 
 export function Home() {
   const { i18n, t } = useTranslation()
@@ -36,6 +65,7 @@ export function Home() {
   const { auth } = useAuthStore()
   const isAuthenticated = !!auth.user
   const { content, isLoaded, isUrl } = useHomePageContent()
+  const { status } = useStatus()
 
   const syncIframePreferences = useCallback(() => {
     try {
@@ -120,14 +150,35 @@ export function Home() {
     )
   }
 
+  const docsUrl =
+    readStatusString(status, 'docs_link') ?? 'https://docs.newapi.pro'
+  const serverAddress =
+    readStatusString(status, 'server_address') ?? window.location.origin
+  const registrationEnabled = isRegistrationEnabled(status)
+
   return (
     <PublicLayout showMainContainer={false}>
-      <Hero isAuthenticated={isAuthenticated} />
-      <Stats />
-      <Features />
-      <HowItWorks />
-      <CTA isAuthenticated={isAuthenticated} />
-      <Footer />
+      <main className='editorial-home'>
+        <Hero
+          docsUrl={docsUrl}
+          isAuthenticated={isAuthenticated}
+          registrationEnabled={registrationEnabled}
+          serverAddress={serverAddress}
+        />
+        <QuickPaths
+          docsUrl={docsUrl}
+          isAuthenticated={isAuthenticated}
+          registrationEnabled={registrationEnabled}
+        />
+        <Advantages />
+        <Ecosystem />
+        <CTA
+          docsUrl={docsUrl}
+          isAuthenticated={isAuthenticated}
+          registrationEnabled={registrationEnabled}
+          serverAddress={serverAddress}
+        />
+      </main>
     </PublicLayout>
   )
 }

@@ -17,79 +17,102 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { Link } from '@tanstack/react-router'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, BookOpen } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
-import { AnimateInView } from '@/components/animate-in-view'
+import { Footer } from '@/components/layout/components/footer'
 import { Button } from '@/components/ui/button'
-import { useStatus } from '@/hooks/use-status'
+
+type CTAPath = '/dashboard' | '/sign-up' | '/sign-in'
 
 interface CTAProps {
-  className?: string
-  isAuthenticated?: boolean
+  docsUrl: string
+  isAuthenticated: boolean
+  registrationEnabled: boolean
+  serverAddress: string
 }
 
 export function CTA(props: CTAProps) {
+  const baseUrl =
+    props.serverAddress.replace(/\/+$/, '').replace(/\/v1$/, '') ||
+    'http://localhost:3000'
   const { t } = useTranslation()
-  const { status } = useStatus()
-
+  let primaryPath: CTAPath = '/sign-in'
+  let primaryLabel = t('Sign in')
   if (props.isAuthenticated) {
-    return null
+    primaryPath = '/dashboard'
+    primaryLabel = t('Go to Dashboard')
+  } else if (props.registrationEnabled) {
+    primaryPath = '/sign-up'
+    primaryLabel = t('Get Started')
   }
 
   return (
-    <section className='relative z-10 overflow-hidden px-6 py-24 md:py-32'>
-      {/* Gradient mesh background */}
-      <div
-        aria-hidden
-        className='absolute inset-0 -z-10 opacity-20 dark:opacity-[0.08]'
-        style={{
-          background: [
-            'radial-gradient(ellipse 50% 50% at 30% 50%, oklch(0.7 0.15 250 / 70%) 0%, transparent 70%)',
-            'radial-gradient(ellipse 40% 40% at 70% 40%, oklch(0.65 0.12 200 / 50%) 0%, transparent 70%)',
-          ].join(', '),
-        }}
-      />
+    <section
+      id='home-cta'
+      aria-labelledby='home-cta-title'
+      className='editorial-folio-section editorial-folio-final-page border-b'
+    >
+      <div className='editorial-folio-final-content px-5 sm:px-8 lg:px-12'>
+        <div className='mx-auto grid w-full max-w-[90rem] lg:grid-cols-[1fr_0.78fr] lg:items-center'>
+          <div className='editorial-reveal max-w-3xl pb-10 lg:pr-16 lg:pb-0'>
+            <p className='editorial-label'>§ 05 · {t('Get Started')}</p>
+            <h2
+              id='home-cta-title'
+              className='mt-5 text-4xl leading-tight font-medium text-balance sm:text-5xl lg:text-6xl'
+            >
+              {t('Ready to connect your tools?')}
+            </h2>
+            <p className='text-muted-foreground mt-6 max-w-xl text-base leading-7'>
+              {t(
+                'Create one key and use it across your AI development workflow.'
+              )}
+            </p>
+            <p className='editorial-colophon editorial-rule mt-10 border-t pt-3'>
+              <span>{baseUrl}/v1</span>
+              <span>VOL. I / ISSUE 01</span>
+            </p>
+          </div>
 
-      <AnimateInView
-        className='mx-auto max-w-2xl text-center'
-        animation='scale-in'
-      >
-        <h2 className='text-2xl leading-tight font-bold tracking-tight md:text-4xl'>
-          {t('Ready to simplify')}
-          <br />
-          <span className='bg-gradient-to-r from-blue-400 via-violet-400 to-purple-500 bg-clip-text text-transparent'>
-            {t('your AI integration?')}
-          </span>
-        </h2>
-        <p className='text-muted-foreground/80 mx-auto mt-5 max-w-md text-sm leading-relaxed md:text-base'>
-          {t(
-            'Deploy your own gateway and start routing requests through your configured upstream services.'
-          )}
-        </p>
-        <div className='mt-8 flex items-center justify-center gap-3'>
-          <Button
-            className='group rounded-lg'
-            render={
-              <Link
-                to={
-                  status?.register_enabled === false ? '/sign-in' : '/sign-up'
+          <div className='editorial-reveal editorial-rule flex flex-col gap-5 border-y py-8 lg:border-y-0 lg:border-l lg:py-0 lg:pl-10'>
+            <Button
+              className='editorial-primary-button group h-14 justify-between rounded-md px-5 text-left text-base font-medium'
+              render={<Link to={primaryPath} />}
+            >
+              <span className='flex items-center gap-3'>
+                <span className='editorial-cta-ornament' aria-hidden='true' />
+                {primaryLabel}
+              </span>
+              <ArrowRight className='size-5 transition-transform duration-200 group-hover:translate-x-1' />
+            </Button>
+            <div className='flex flex-wrap items-center gap-5'>
+              <Button
+                variant='ghost'
+                className='group h-9 px-0 text-sm'
+                render={<Link to='/pricing' />}
+              >
+                {t('View Pricing')}
+                <ArrowRight className='size-4 transition-transform duration-200 group-hover:translate-x-1' />
+              </Button>
+              <Button
+                variant='ghost'
+                className='h-9 px-0 text-sm'
+                render={
+                  <a
+                    href={props.docsUrl}
+                    target='_blank'
+                    rel='noopener noreferrer'
+                  />
                 }
-              />
-            }
-          >
-            {t('Get Started')}
-            <ArrowRight className='ml-1 size-3.5 transition-transform duration-200 group-hover:translate-x-0.5' />
-          </Button>
-          <Button
-            variant='outline'
-            className='border-border/50 hover:border-border hover:bg-muted/50 rounded-lg'
-            render={<Link to='/pricing' />}
-          >
-            {t('View Pricing')}
-          </Button>
+              >
+                <BookOpen aria-hidden='true' className='size-4' />
+                {t('Docs')}
+              </Button>
+            </div>
+          </div>
         </div>
-      </AnimateInView>
+      </div>
+      <Footer className='editorial-home-footer shrink-0' />
     </section>
   )
 }
