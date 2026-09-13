@@ -33,6 +33,7 @@ import { Ecosystem } from './components/sections/ecosystem'
 import { Hero } from './components/sections/hero'
 import { QuickPaths } from './components/sections/quick-paths'
 import { useHomePageContent } from './hooks'
+import { useHomeScrollSnap } from './hooks/use-home-scroll-snap'
 
 function readStatusString(
   status: SystemStatus | null,
@@ -66,6 +67,7 @@ export function Home() {
   const isAuthenticated = !!auth.user
   const { content, isLoaded, isUrl } = useHomePageContent()
   const { status } = useStatus()
+  const homeRef = useHomeScrollSnap(isLoaded && !content)
 
   const syncIframePreferences = useCallback(() => {
     try {
@@ -158,7 +160,7 @@ export function Home() {
 
   return (
     <PublicLayout showMainContainer={false}>
-      <main className='editorial-home'>
+      <main ref={homeRef} className='editorial-home'>
         <Hero
           docsUrl={docsUrl}
           isAuthenticated={isAuthenticated}

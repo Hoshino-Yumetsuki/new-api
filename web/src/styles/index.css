@@ -671,13 +671,10 @@ For commercial licensing, please contact support@quantumnous.com
   border-color: var(--editorial-edge);
 }
 
-html:has(.editorial-home) {
-  scroll-snap-type: y mandatory;
-}
-
-.editorial-home > section {
-  scroll-snap-align: start;
-  scroll-snap-stop: always;
+@media (prefers-reduced-motion: no-preference) {
+  html:has(.editorial-home) {
+    scroll-behavior: smooth;
+  }
 }
 
 .editorial-folio-section {
@@ -1087,7 +1084,6 @@ html:has(.editorial-home) {
 
 @media (min-width: 1024px) {
   .editorial-hero {
-    height: 100svh;
     padding-top: clamp(5rem, 14vh, 9rem);
     padding-bottom: clamp(2.5rem, 8vh, 7rem);
   }
