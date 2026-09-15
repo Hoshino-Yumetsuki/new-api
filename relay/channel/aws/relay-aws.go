@@ -366,6 +366,10 @@ func handleNovaRequest(c *gin.Context, info *relaycommon.RelayInfo, a *Adaptor) 
 		},
 	}
 
-	c.JSON(http.StatusOK, response)
+	responseBody, err := common.Marshal(response)
+	if err != nil {
+		return types.NewError(err, types.ErrorCodeBadResponseBody), nil
+	}
+	c.Data(http.StatusOK, "application/json; charset=utf-8", service.RestoreResponseModel(c, responseBody))
 	return nil, &response.Usage
 }

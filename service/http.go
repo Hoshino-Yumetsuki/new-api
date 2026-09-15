@@ -8,10 +8,73 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
+
+// RestoreResponseModel restores the model name requested by the client in a
+// serialized protocol response. It deliberately patches only the protocol's
+// model field, leaving upstream response data and unknown extensions intact.
+func RestoreResponseModel(c *gin.Context, data []byte) []byte {
+	if c == nil || c.Request == nil || c.Request.URL == nil || len(data) == 0 {
+		return data
+	}
+	originalModel := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
+	if originalModel == "" {
+		return data
+	}
+
+	path := c.Request.URL.Path
+	field := ""
+	requireModel := false
+	switch {
+	case path == "/v1/chat/completions" || path == "/pg/chat/completions":
+		field = "model"
+	case path == "/v1/messages":
+		field = "model"
+		messageType := gjson.GetBytes(data, "type").String()
+		requireModel = messageType == "message" || messageType == "message_start"
+		if messageType == "message_start" {
+			field = "message.model"
+		}
+	case path == "/v1/responses" || path == "/v1/responses/compact":
+		field = "model"
+		if responseType := gjson.GetBytes(data, "type"); responseType.Type == gjson.String && strings.HasPrefix(responseType.String(), "response.") {
+			field = "response.model"
+			requireModel = true
+		}
+	case (strings.HasPrefix(path, "/v1/models/") || strings.HasPrefix(path, "/v1beta/models/")) &&
+		(strings.HasSuffix(path, ":generateContent") || strings.HasSuffix(path, ":streamGenerateContent")):
+		field = "modelVersion"
+	default:
+		return data
+	}
+
+	current := gjson.GetBytes(data, field)
+	if current.Exists() {
+		if current.Type != gjson.String || current.String() == originalModel {
+			return data
+		}
+	} else if field == "modelVersion" {
+		if !gjson.GetBytes(data, "candidates").IsArray() && !gjson.GetBytes(data, "usageMetadata").IsObject() {
+			return data
+		}
+	} else if !requireModel || (field != "model" && !gjson.GetBytes(data, strings.TrimSuffix(field, ".model")).IsObject()) {
+		return data
+	}
+	if !gjson.ValidBytes(data) {
+		return data
+	}
+	restored, err := sjson.SetBytes(data, field, originalModel)
+	if err != nil {
+		return data
+	}
+	return restored
+}
 
 func CloseResponseBodyGracefully(httpResponse *http.Response) {
 	if httpResponse == nil || httpResponse.Body == nil {
@@ -45,6 +108,7 @@ func IOCopyBytesGracefully(c *gin.Context, src *http.Response, data []byte) {
 	if c.Writer == nil {
 		return
 	}
+	data = RestoreResponseModel(c, data)
 
 	body := io.NopCloser(bytes.NewBuffer(data))
 

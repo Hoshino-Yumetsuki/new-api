@@ -115,7 +115,7 @@ func cfHandler(c *gin.Context, info *relaycommon.RelayInfo, resp *http.Response)
 	}
 	c.Writer.Header().Set("Content-Type", "application/json")
 	c.Writer.WriteHeader(resp.StatusCode)
-	_, _ = c.Writer.Write(jsonResponse)
+	_, _ = c.Writer.Write(service.RestoreResponseModel(c, jsonResponse))
 	return nil, usage
 }
 
