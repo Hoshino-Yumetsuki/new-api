@@ -6,10 +6,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/relay/channel/openai"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	relayconstant "github.com/QuantumNous/new-api/relay/constant"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -19,6 +22,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestAdaptorUsesExactRouteAndQueryAuth(t *testing.T) {
@@ -827,6 +831,219 @@ func TestAdaptorConvertsGeminiRequestToOpenAIChatUpstream(t *testing.T) {
 	assert.Equal(t, "gpt-test", chatReq.Model)
 	require.Len(t, chatReq.Messages, 1)
 	assert.Equal(t, "user", chatReq.Messages[0].Role)
+}
+
+func TestAdaptorRestoresOriginalModelForNativeJSONResponses(t *testing.T) {
+	const clientModel = "claude-4.5-sonnet-20250929"
+	const upstreamModel = "claude-4.5-sonnet"
+
+	for _, tc := range []struct {
+		name, requestURL, routePath, modelPath, body string
+		format                                       types.RelayFormat
+		mode                                         int
+	}{
+		{"openai chat", "/v1/chat/completions", "/v1/chat/completions", "model", `{"id":"chat_1","object":"chat.completion","model":"claude-4.5-sonnet","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2},"extension":{"model":"nested-upstream","tool":{"model":"tool-upstream"}}}`, types.RelayFormatOpenAI, relayconstant.RelayModeChatCompletions},
+		{"claude messages", "/v1/messages", "/v1/messages", "model", `{"id":"msg_1","type":"message","role":"assistant","model":"claude-4.5-sonnet","content":[{"type":"text","text":"hello"}],"usage":{"input_tokens":1,"output_tokens":1},"extension":{"model":"nested-upstream","tool":{"model":"tool-upstream"}}}`, types.RelayFormatClaude, relayconstant.RelayModeChatCompletions},
+		{"gemini generate content", "/v1beta/models/claude-4.5-sonnet-20250929:generateContent", "/v1beta/models/{model}:generateContent", "modelVersion", `{"candidates":[],"modelVersion":"","usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1,"totalTokenCount":2},"extension":{"model":"nested-upstream","tool":{"model":"tool-upstream"}}}`, types.RelayFormatGemini, relayconstant.RelayModeGemini},
+		{"openai responses", "/v1/responses", "/v1/responses", "model", `{"id":"resp_1","object":"response","status":"completed","model":"claude-4.5-sonnet","output":[],"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2},"extension":{"model":"nested-upstream","tool":{"model":"tool-upstream"}}}`, types.RelayFormatOpenAIResponses, relayconstant.RelayModeResponses},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			info := advancedCustomResponseInfo(tc.requestURL, tc.routePath, tc.format, tc.mode, relayconvert.ConverterNone)
+			info.OriginModelName, info.UpstreamModelName = clientModel, upstreamModel
+			c, recorder := advancedCustomGinRecorder(tc.requestURL)
+			common.SetContextKey(c, constant.ContextKeyOriginalModel, clientModel)
+
+			_, responseErr := (&Adaptor{}).DoResponse(c, advancedCustomHTTPResponse(tc.body), info)
+			require.Nil(t, responseErr)
+			got := recorder.Body.String()
+			assert.Equal(t, clientModel, gjson.Get(got, tc.modelPath).String())
+			assert.Equal(t, "nested-upstream", gjson.Get(got, "extension.model").String())
+			assert.Equal(t, "tool-upstream", gjson.Get(got, "extension.tool.model").String())
+			assert.Equal(t, strconv.Itoa(len(recorder.Body.Bytes())), recorder.Header().Get("Content-Length"))
+		})
+	}
+}
+
+func TestAdaptorRestoresOriginalModelForNativeStreams(t *testing.T) {
+	oldStreamingTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldStreamingTimeout })
+	const clientModel = "claude-4.5-sonnet-20250929"
+	const upstreamModel = "claude-4.5-sonnet"
+
+	for _, tc := range []struct {
+		name, requestURL, routePath, modelPath, body string
+		format                                       types.RelayFormat
+		mode                                         int
+		modelFrames, sparseFrames                    []int
+	}{
+		{"openai chat", "/v1/chat/completions", "/v1/chat/completions", "model", "data: {\"id\":\"chat_1\",\"model\":\"claude-4.5-sonnet\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hello\"}}]}\n\ndata: {\"id\":\"chat_1\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n", types.RelayFormatOpenAI, relayconstant.RelayModeChatCompletions, []int{0, 2}, []int{1}},
+		{"claude messages", "/v1/messages", "/v1/messages", "message.model", "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-4.5-sonnet\",\"content\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":0}}}\n\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":1}}\n", types.RelayFormatClaude, relayconstant.RelayModeChatCompletions, []int{0}, []int{1}},
+		{"gemini generate content", "/v1beta/models/claude-4.5-sonnet-20250929:streamGenerateContent", "/v1beta/models/{model}:streamGenerateContent", "modelVersion", "data: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"hello\"}]}}],\"modelVersion\":\"claude-4.5-sonnet\"}\n\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\",\"parts\":[{\"text\":\"world\"}]}}]}\n", types.RelayFormatGemini, relayconstant.RelayModeGemini, []int{0}, nil},
+		{"openai responses", "/v1/responses", "/v1/responses", "response.model", "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"in_progress\",\"model\":\"claude-4.5-sonnet\",\"output\":[]}}\n\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_1\",\"object\":\"response\",\"status\":\"completed\",\"model\":\"claude-4.5-sonnet\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\ndata: [DONE]\n", types.RelayFormatOpenAIResponses, relayconstant.RelayModeResponses, []int{0, 2}, []int{1}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			info := advancedCustomResponseInfo(tc.requestURL, tc.routePath, tc.format, tc.mode, relayconvert.ConverterNone)
+			info.IsStream, info.ShouldIncludeUsage = true, true
+			info.OriginModelName, info.UpstreamModelName = clientModel, upstreamModel
+			c, recorder := advancedCustomGinRecorder(tc.requestURL)
+			common.SetContextKey(c, constant.ContextKeyOriginalModel, clientModel)
+
+			_, responseErr := (&Adaptor{}).DoResponse(c, advancedCustomHTTPResponse(tc.body), info)
+			require.Nil(t, responseErr)
+			frames := advancedCustomSSEFrames(recorder.Body.String())
+			for _, i := range tc.modelFrames {
+				assert.Equal(t, clientModel, gjson.Get(frames[i], tc.modelPath).String())
+			}
+			for _, i := range tc.sparseFrames {
+				assert.False(t, gjson.Get(frames[i], tc.modelPath).Exists())
+			}
+		})
+	}
+}
+
+func TestAdaptorRestoresOriginalModelForConvertedGeminiJSON(t *testing.T) {
+	const clientModel = "claude-4.5-sonnet-20250929"
+	info := advancedCustomResponseInfo("/v1beta/models/claude-4.5-sonnet-20250929:generateContent", "/v1beta/models/{model}:generateContent", types.RelayFormatGemini, relayconstant.RelayModeGemini, relayconvert.ConverterGeminiContentToOpenAIChat)
+	info.OriginModelName, info.UpstreamModelName = clientModel, "claude-4.5-sonnet"
+	c, recorder := advancedCustomGinRecorder(info.RequestURLPath)
+	common.SetContextKey(c, constant.ContextKeyOriginalModel, clientModel)
+	body := `{"id":"chat_1","object":"chat.completion","model":"claude-4.5-sonnet","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`
+
+	_, responseErr := (&Adaptor{}).DoResponse(c, advancedCustomHTTPResponse(body), info)
+	require.Nil(t, responseErr)
+	assert.Equal(t, clientModel, gjson.Get(recorder.Body.String(), "modelVersion").String())
+}
+
+func TestAdaptorRestoresOriginalModelForConvertedStream(t *testing.T) {
+	oldStreamingTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldStreamingTimeout })
+	const clientModel = "claude-4.5-sonnet-20250929"
+	body := "data: {\"id\":\"chat_1\",\"model\":\"claude-4.5-sonnet\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\"}}]}\n\ndata: {\"id\":\"chat_1\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"hello\"}}]}\n\ndata: {\"id\":\"chat_1\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n"
+	for _, tc := range []struct {
+		name, path, routePath, modelPath, converter string
+		format                                      types.RelayFormat
+		mode                                        int
+	}{
+		{"responses", "/v1/responses", "/v1/responses", "response.model", relayconvert.ConverterOpenAIResponsesToOpenAIChat, types.RelayFormatOpenAIResponses, relayconstant.RelayModeResponses},
+		{"claude", "/v1/messages", "/v1/messages", "message.model", relayconvert.ConverterClaudeMessagesToOpenAIChat, types.RelayFormatClaude, relayconstant.RelayModeChatCompletions},
+		{"gemini", "/v1beta/models/claude-4.5-sonnet-20250929:streamGenerateContent", "/v1beta/models/{model}:streamGenerateContent", "modelVersion", relayconvert.ConverterGeminiContentToOpenAIChat, types.RelayFormatGemini, relayconstant.RelayModeGemini},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			info := advancedCustomResponseInfo(tc.path, tc.routePath, tc.format, tc.mode, tc.converter)
+			info.IsStream = true
+			info.OriginModelName, info.UpstreamModelName = clientModel, "claude-4.5-sonnet"
+			c, recorder := advancedCustomGinRecorder(tc.path)
+			common.SetContextKey(c, constant.ContextKeyOriginalModel, clientModel)
+
+			_, responseErr := (&Adaptor{}).DoResponse(c, advancedCustomHTTPResponse(body), info)
+			require.Nil(t, responseErr)
+			var sawModel bool
+			for _, frame := range advancedCustomSSEFrames(recorder.Body.String()) {
+				if tc.format == types.RelayFormatGemini || gjson.Get(frame, "type").String() == "message_start" || gjson.Get(frame, "response").IsObject() {
+					sawModel = true
+					assert.Equal(t, clientModel, gjson.Get(frame, tc.modelPath).String())
+				} else {
+					assert.False(t, gjson.Get(frame, tc.modelPath).Exists())
+				}
+			}
+			assert.True(t, sawModel)
+			assert.Contains(t, recorder.Body.String(), "hello")
+		})
+	}
+}
+
+func TestBufferedResponsesToChatRestoresOriginalModel(t *testing.T) {
+	const clientModel = "claude-4.5-sonnet-20250929"
+	body := "data: {\"type\":\"response.created\",\"response\":{\"model\":\"claude-4.5-sonnet\"}}\n" +
+		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n" +
+		"data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"usage\":{\"input_tokens\":2,\"output_tokens\":3,\"total_tokens\":5}}}\n"
+
+	for _, tc := range []struct {
+		name, path string
+		format     types.RelayFormat
+	}{
+		{"openai chat", "/v1/chat/completions", types.RelayFormatOpenAI},
+		{"claude messages", "/v1/messages", types.RelayFormatClaude},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			info := advancedCustomResponseInfo(tc.path, tc.path, tc.format, relayconstant.RelayModeChatCompletions, relayconvert.ConverterNone)
+			info.OriginModelName, info.UpstreamModelName = clientModel, "claude-4.5-sonnet"
+			c, recorder := advancedCustomGinRecorder(tc.path)
+			common.SetContextKey(c, constant.ContextKeyOriginalModel, clientModel)
+
+			_, responseErr := openai.OaiResponsesToChatBufferedStreamHandler(c, info, advancedCustomHTTPResponse(body))
+			require.Nil(t, responseErr)
+			assert.Equal(t, clientModel, gjson.Get(recorder.Body.String(), "model").String())
+		})
+	}
+}
+
+func TestAdaptorLeavesResponseModelUntouchedOutsideRestoreScope(t *testing.T) {
+	const upstreamModel = "claude-4.5-sonnet"
+	body := `{"id":"chat_1","object":"chat.completion","model":"claude-4.5-sonnet","choices":[{"index":0,"message":{"role":"assistant","content":"hello"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`
+
+	for _, tc := range []struct {
+		name, requestURL string
+		setOriginal      bool
+	}{
+		{"missing original model", "/v1/chat/completions", false},
+		{"out of scope endpoint", "/v1/embeddings", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			info := advancedCustomResponseInfo(tc.requestURL, tc.requestURL, types.RelayFormatOpenAI, relayconstant.RelayModeChatCompletions, relayconvert.ConverterNone)
+			info.OriginModelName, info.UpstreamModelName = "claude-4.5-sonnet-20250929", upstreamModel
+			c, recorder := advancedCustomGinRecorder(tc.requestURL)
+			if tc.setOriginal {
+				common.SetContextKey(c, constant.ContextKeyOriginalModel, info.OriginModelName)
+			}
+
+			_, responseErr := (&Adaptor{}).DoResponse(c, advancedCustomHTTPResponse(body), info)
+			require.Nil(t, responseErr)
+			assert.Equal(t, upstreamModel, gjson.Get(recorder.Body.String(), "model").String())
+		})
+	}
+}
+
+func advancedCustomResponseInfo(requestURL string, routePath string, format types.RelayFormat, relayMode int, converter string) *relaycommon.RelayInfo {
+	info := advancedCustomRelayInfo(&dto.AdvancedCustomConfig{Routes: []dto.AdvancedCustomRoute{{
+		IncomingPath: routePath,
+		UpstreamPath: "https://upstream.example/v1/chat/completions",
+		Converter:    converter,
+	}}})
+	info.RequestURLPath = requestURL
+	info.RelayFormat = format
+	info.RelayMode = relayMode
+	return info
+}
+
+func advancedCustomGinRecorder(path string) (*gin.Context, *httptest.ResponseRecorder) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, path, nil)
+	c.Request.Header.Set("Content-Type", "application/json")
+	return c, recorder
+}
+
+func advancedCustomHTTPResponse(body string) *http.Response {
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+}
+
+func advancedCustomSSEFrames(body string) []string {
+	frames := make([]string, 0)
+	for line := range strings.SplitSeq(body, "\n") {
+		data, ok := strings.CutPrefix(line, "data: ")
+		if ok && gjson.Valid(data) {
+			frames = append(frames, data)
+		}
+	}
+	return frames
 }
 
 func advancedCustomRelayInfo(config *dto.AdvancedCustomConfig) *relaycommon.RelayInfo {
