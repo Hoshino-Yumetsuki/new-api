@@ -25,7 +25,9 @@ import { useTheme } from '@/context/theme-provider'
 import type { SystemStatus } from '@/features/auth/types'
 import { useStatus } from '@/hooks/use-status'
 import { isLikelyHtml } from '@/lib/content-format'
+import { applySiteTitleToDom } from '@/lib/dom-utils'
 import { useAuthStore } from '@/stores/auth-store'
+import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import { Advantages } from './components/sections/advantages'
 import { CTA } from './components/sections/cta'
@@ -67,7 +69,22 @@ export function Home() {
   const isAuthenticated = !!auth.user
   const { content, isLoaded, isUrl } = useHomePageContent()
   const { status } = useStatus()
+  const systemName = useSystemConfigStore((state) => state.config.systemName)
   const homeRef = useHomeScrollSnap(isLoaded && !content)
+  const siteTitle = readStatusString(status, 'site_title')
+  const siteDescription = readStatusString(status, 'site_description') ?? ''
+
+  useEffect(() => {
+    if (siteTitle) applySiteTitleToDom(siteTitle)
+    const descriptionMeta = document.querySelector<HTMLMetaElement>(
+      'meta[name="description"]'
+    )
+    if (siteTitle) descriptionMeta?.setAttribute('content', siteDescription)
+    return () => {
+      applySiteTitleToDom(systemName)
+      descriptionMeta?.setAttribute('content', '')
+    }
+  }, [siteTitle, siteDescription, systemName])
 
   const syncIframePreferences = useCallback(() => {
     try {

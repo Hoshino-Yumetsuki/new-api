@@ -32,3 +32,11 @@ export function applyFaviconToDom(url: string) {
     // Ignore malformed URLs
   }
 }
+
+export function applySiteTitleToDom(title: string): void {
+  if (typeof document === 'undefined' || !title) return
+  document.title = title
+  document
+    .querySelector<HTMLMetaElement>('meta[name="title"]')
+    ?.setAttribute('content', title)
+}

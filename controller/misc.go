@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
@@ -66,6 +67,8 @@ func GetStatus(c *gin.Context) {
 		"telegram_bot_name":           common.TelegramBotName,
 		"theme":                       "default",
 		"system_name":                 common.SystemName,
+		"site_title":                  operation_setting.EffectiveSiteTitle(common.SystemName),
+		"site_description":            strings.TrimSpace(operation_setting.GetGeneralSetting().SiteDescription),
 		"logo":                        common.Logo,
 		"footer_html":                 common.Footer,
 		"wechat_qrcode":               common.WeChatAccountQRCodeImageURL,

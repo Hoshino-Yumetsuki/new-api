@@ -156,6 +156,7 @@ export type SystemTaskListResponse = {
 export type SiteSettings = {
   Notice: string
   SystemName: string
+  'general_setting.site_description': string
   Logo: string
   Footer: string
   About: string

@@ -48,6 +48,9 @@ import { isValidTaskPublicAddress } from './task-public-address'
 
 const _systemInfoSchema = z.object({
   SystemName: z.string().min(1),
+  general_setting: z.object({
+    site_description: z.string().optional(),
+  }),
   ServerAddress: z.string().optional(),
   TaskPublicAddress: z.string().refine(isValidTaskPublicAddress),
   Logo: z.string().url().optional().or(z.literal('')),
@@ -77,6 +80,11 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
 
   const normalizedDefaults: SystemInfoFormValues = {
     SystemName: normalizeValue(defaultValues.SystemName),
+    general_setting: {
+      site_description: normalizeValue(
+        defaultValues.general_setting?.site_description
+      ),
+    },
     ServerAddress: normalizeValue(defaultValues.ServerAddress),
     TaskPublicAddress: normalizeValue(defaultValues.TaskPublicAddress),
     Logo: normalizeValue(defaultValues.Logo),
@@ -92,6 +100,9 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
   const systemInfoSchemaWithI18n = z.object({
     SystemName: z.string().min(1, {
       error: () => t('System name is required'),
+    }),
+    general_setting: z.object({
+      site_description: z.string().optional(),
     }),
     ServerAddress: z.string().optional(),
     TaskPublicAddress: z.string().refine(isValidTaskPublicAddress, {
@@ -158,6 +169,27 @@ export function SystemInfoSection({ defaultValues }: SystemInfoSectionProps) {
                     </FormControl>
                     <FormDescription>
                       {t('The name displayed across the application')}
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name='general_setting.site_description'
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>
+                      {t('Description', { context: 'site' })}
+                    </FormLabel>
+                    <FormControl>
+                      <Input {...field} />
+                    </FormControl>
+                    <FormDescription>
+                      {t(
+                        'Used as the homepage meta description and appended to the title as “Site name - Description”. Leave empty to use only the site name.'
+                      )}
                     </FormDescription>
                     <FormMessage />
                   </FormItem>

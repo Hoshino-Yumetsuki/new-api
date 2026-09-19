@@ -1,6 +1,10 @@
 package operation_setting
 
-import "github.com/QuantumNous/new-api/setting/config"
+import (
+	"strings"
+
+	"github.com/QuantumNous/new-api/setting/config"
+)
 
 // 额度展示类型
 const (
@@ -12,6 +16,7 @@ const (
 
 type GeneralSetting struct {
 	DocsLink            string `json:"docs_link"`
+	SiteDescription     string `json:"site_description"`
 	PingIntervalEnabled bool   `json:"ping_interval_enabled"`
 	PingIntervalSeconds int    `json:"ping_interval_seconds"`
 	// 当前站点额度展示类型：USD / CNY / TOKENS
@@ -41,6 +46,19 @@ func init() {
 
 func GetGeneralSetting() *GeneralSetting {
 	return &generalSetting
+}
+
+// EffectiveSiteTitle appends the optional description to the in-app name.
+// Callers reading live options must hold common.OptionMapRWMutex.RLock.
+func EffectiveSiteTitle(systemName string) string {
+	name := strings.TrimSpace(systemName)
+	if name == "" {
+		name = "New API"
+	}
+	if description := strings.TrimSpace(generalSetting.SiteDescription); description != "" {
+		return name + " - " + description
+	}
+	return name
 }
 
 // IsCurrencyDisplay 是否以货币形式展示（美元或人民币）

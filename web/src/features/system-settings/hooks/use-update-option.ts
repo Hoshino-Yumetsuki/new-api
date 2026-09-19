@@ -28,6 +28,8 @@ import type { UpdateOptionRequest, UpdatePasskeyDomainsRequest } from '../types'
 
 // Configuration keys that require status refresh
 const STATUS_RELATED_KEYS = new Set([
+  'SystemName',
+  'general_setting.site_description',
   'HeaderNavModules',
   'SidebarModulesAdmin',
   'Notice',
