@@ -111,6 +111,7 @@ export function Home() {
     return (
       <PublicLayout showMainContainer={false}>
         <main className='flex min-h-screen items-center justify-center'>
+          <h1 className='sr-only'>{systemName}</h1>
           <div className='text-muted-foreground'>{t('Loading...')}</div>
         </main>
       </PublicLayout>
@@ -121,6 +122,7 @@ export function Home() {
     if (isUrl) {
       return (
         <PublicLayout showMainContainer={false}>
+          <h1 className='sr-only'>{systemName}</h1>
           {/*
             allow-top-navigation-by-user-activation: the custom home page URL is
             admin-configured (trusted); this lets its target="_top" nav/menu links
@@ -146,6 +148,7 @@ export function Home() {
     if (contentIsHtml) {
       return (
         <PublicLayout showMainContainer={false}>
+          <h1 className='sr-only'>{systemName}</h1>
           <RichContent
             mode='html'
             htmlVariant='isolated'
@@ -159,6 +162,7 @@ export function Home() {
     return (
       <PublicLayout>
         <div className='mx-auto max-w-6xl px-4 py-8'>
+          <h1 className='sr-only'>{systemName}</h1>
           <RichContent
             mode='markdown'
             content={content}
