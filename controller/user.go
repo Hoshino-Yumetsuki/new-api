@@ -96,7 +96,7 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	setupLogin(&user, c)
+	setupLogin(&user, nil, c)
 }
 
 // loginMethodFromContext 根据请求路径推导登录方式，用于登录审计日志。
@@ -144,9 +144,11 @@ func recordLoginAudit(user *model.User, c *gin.Context) {
 }
 
 // setupLogin evaluates the shared login policy after primary authentication.
-// Additional verification is required only when two-factor authentication is enabled.
-func setupLogin(user *model.User, c *gin.Context) {
-	challenge, err := service.StartLoginVerification(user, loginMethodFromContext(c))
+// Additional verification is ordinarily required only when two-factor authentication is enabled.
+// A pending legacy GitHub binding rewrite always travels inside a verification challenge and
+// is written only when that account evidence completes.
+func setupLogin(user *model.User, migration *service.LegacyGitHubMigration, c *gin.Context) {
+	challenge, err := service.StartLoginVerification(user, loginMethodFromContext(c), migration)
 	if err != nil {
 		writeSecurityOperationError(c, err)
 		return

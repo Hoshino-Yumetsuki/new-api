@@ -182,7 +182,7 @@ func securityVerificationPolicy(scope string, state model.UserVerificationState)
 		methods = append(methods, VerificationMethodPasskey)
 	}
 	switch scope {
-	case VerificationScopeChannelKeyRead, VerificationScopePasskeyDelete, VerificationScopeLogin:
+	case VerificationScopeChannelKeyRead, VerificationScopePasskeyDelete, VerificationScopeLogin, verificationScopeLoginMigration:
 	case VerificationScopeTwoFADisable, VerificationScopeTwoFABackupCodes:
 		if !state.HasTwoFA {
 			return nil, model.ErrTwoFANotEnabled
