@@ -65,7 +65,7 @@ export function Hero(props: HeroProps) {
 
   const endpointPath = ENDPOINT_PATHS[endpointIndex]
   let primaryPath: HeroPath = '/sign-in'
-  let primaryLabel = t('Sign in')
+  let primaryLabel = t('Go to Dashboard')
   let secondaryPath: HeroPath = '/sign-in'
   let secondaryLabel = t('Sign in')
   if (props.isAuthenticated) {
