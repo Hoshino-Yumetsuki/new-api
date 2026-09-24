@@ -9,11 +9,16 @@ import (
 
 // Quota conversions are centralized here so every billing path shares one
 // saturation + logging policy. Single-request charges stay bounded to int32;
-// top-ups and wallet-priced purchases use a JavaScript-safe 64-bit domain.
+// wallets reserve one bit of int64 headroom so any balance difference fits int64.
 const (
 	MaxQuota       = math.MaxInt32
 	MinQuota       = math.MinInt32
-	MaxWalletQuota = 1<<53 - 1
+	MaxWalletQuota = math.MaxInt64 / 2
+)
+
+var (
+	maxWalletQuotaDecimal = decimal.NewFromInt(MaxWalletQuota)
+	minWalletQuotaDecimal = decimal.NewFromInt(-MaxWalletQuota)
 )
 
 // ValidateWalletQuota enforces the upper bound shared by wallet mutations.
@@ -167,9 +172,22 @@ func QuotaFromDecimalStrict(d decimal.Decimal) (int, error) {
 	return strictQuota(QuotaFromDecimalChecked(d))
 }
 
-// WalletQuotaFromDecimalStrict converts wallet and top-up values within the
-// JavaScript-safe integer range, which is also exactly representable by float64.
+// WalletQuotaFromDecimalStrict rounds wallet and top-up values without passing
+// through float64, which cannot preserve individual quota units above 2^53.
 func WalletQuotaFromDecimalStrict(d decimal.Decimal) (int, error) {
-	f, _ := d.Round(0).Float64()
-	return strictQuota(saturateQuotaBounded(f, "WalletQuotaFromDecimal", MaxWalletQuota, -MaxWalletQuota))
+	rounded := d.Round(0)
+	var kind QuotaClampKind
+	var bound int
+	switch {
+	case rounded.GreaterThan(maxWalletQuotaDecimal):
+		kind, bound = QuotaClampOverflow, MaxWalletQuota
+	case rounded.LessThan(minWalletQuotaDecimal):
+		kind, bound = QuotaClampUnderflow, -MaxWalletQuota
+	default:
+		return int(rounded.IntPart()), nil
+	}
+	original, _ := d.Float64()
+	clamp := &QuotaClamp{Op: "WalletQuotaFromDecimal", Kind: kind, Original: original, Clamped: bound}
+	SysError(clamp.Error())
+	return 0, clamp
 }
