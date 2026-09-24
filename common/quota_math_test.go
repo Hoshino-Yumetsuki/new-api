@@ -129,18 +129,39 @@ func TestQuotaFromDecimalChecked(t *testing.T) {
 }
 
 func TestWalletQuotaFromDecimalStrict(t *testing.T) {
-	quota, err := WalletQuotaFromDecimalStrict(decimal.NewFromInt(4_294_500_000))
-	require.NoError(t, err)
-	assert.Equal(t, 4_294_500_000, quota)
-
-	quota, err = WalletQuotaFromDecimalStrict(decimal.NewFromInt(MaxWalletQuota))
-	require.NoError(t, err)
-	assert.Equal(t, MaxWalletQuota, quota)
-
-	quota, err = WalletQuotaFromDecimalStrict(decimal.NewFromInt(MaxWalletQuota + 1))
-	assert.Zero(t, quota)
-	var clamp *QuotaClamp
-	require.ErrorAs(t, err, &clamp)
-	assert.Equal(t, "WalletQuotaFromDecimal", clamp.Op)
-	assert.Equal(t, QuotaClampOverflow, clamp.Kind)
+	for _, tc := range []struct {
+		input string
+		want  int
+		kind  QuotaClampKind
+	}{
+		{input: "4294500000", want: 4_294_500_000},
+		{input: "50000853048500001", want: 50_000_853_048_500_001},
+		{input: "-50000853048500001", want: -50_000_853_048_500_001},
+		{input: "50000853048500001.5", want: 50_000_853_048_500_002},
+		{input: "-50000853048500001.5", want: -50_000_853_048_500_002},
+		{input: fmt.Sprint(MaxWalletQuota), want: MaxWalletQuota},
+		{input: fmt.Sprint(-MaxWalletQuota), want: -MaxWalletQuota},
+		{input: fmt.Sprintf("%d.49", MaxWalletQuota), want: MaxWalletQuota},
+		{input: fmt.Sprintf("%d.5", MaxWalletQuota), kind: QuotaClampOverflow},
+		{input: fmt.Sprintf("%d.5", -MaxWalletQuota), kind: QuotaClampUnderflow},
+		{input: fmt.Sprint(MaxWalletQuota + 1), kind: QuotaClampOverflow},
+		{input: fmt.Sprint(-MaxWalletQuota - 1), kind: QuotaClampUnderflow},
+		{input: "18446744073709551616", kind: QuotaClampOverflow},
+	} {
+		t.Run(tc.input, func(t *testing.T) {
+			value, err := decimal.NewFromString(tc.input)
+			require.NoError(t, err)
+			quota, err := WalletQuotaFromDecimalStrict(value)
+			if tc.kind == "" {
+				require.NoError(t, err)
+				assert.Equal(t, tc.want, quota)
+				return
+			}
+			assert.Zero(t, quota)
+			var clamp *QuotaClamp
+			require.ErrorAs(t, err, &clamp)
+			assert.Equal(t, "WalletQuotaFromDecimal", clamp.Op)
+			assert.Equal(t, tc.kind, clamp.Kind)
+		})
+	}
 }

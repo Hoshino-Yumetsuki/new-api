@@ -322,6 +322,12 @@ func TestRechargeEpayEnforcesFinalWalletQuotaLimit(t *testing.T) {
 		wantStatus   string
 	}{
 		{
+			name:         "credits a large wallet without losing individual quota units",
+			currentQuota: 50_000_853_048_500_001,
+			wantQuota:    50_000_853_049_500_001,
+			wantStatus:   common.TopUpStatusSuccess,
+		},
+		{
 			name:         "allows exact highest representable wallet balance",
 			currentQuota: common.MaxWalletQuota - 1_000_000,
 			wantQuota:    common.MaxWalletQuota,
@@ -342,11 +348,23 @@ func TestRechargeEpayEnforcesFinalWalletQuotaLimit(t *testing.T) {
 			user := insertUserForPaymentGuardTest(t, 506, tc.currentQuota)
 			order := createEpayTestOrder(t, user.Id, "EPAYTESTWALLETLIMIT", PaymentProviderEpay, common.TopUpStatusPending)
 
+			capacityErr := ValidateTopUpQuotaCapacity(user.Id, 1_000_000)
+			if tc.wantErr {
+				require.ErrorIs(t, capacityErr, ErrTopUpQuotaLimitExceeded)
+			} else {
+				require.NoError(t, capacityErr)
+			}
+
 			_, err := RechargeEpay(order.TradeNo, "alipay", "127.0.0.1")
 			if tc.wantErr {
 				require.ErrorIs(t, err, ErrTopUpQuotaLimitExceeded)
 			} else {
 				require.NoError(t, err)
+			}
+			if !tc.wantErr {
+				alreadyDone, err := RechargeEpay(order.TradeNo, "alipay", "127.0.0.1")
+				require.NoError(t, err)
+				assert.True(t, alreadyDone, "replaying a completed payment must not credit it twice")
 			}
 			assert.Equal(t, tc.wantQuota, getUserQuotaForPaymentGuardTest(t, user.Id))
 			assert.Equal(t, tc.wantStatus, getTopUpStatusForPaymentGuardTest(t, order.TradeNo))
