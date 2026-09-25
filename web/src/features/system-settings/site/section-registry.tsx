@@ -39,6 +39,7 @@ const SITE_SECTIONS = [
           SystemName: settings.SystemName,
           general_setting: {
             site_description: settings['general_setting.site_description'],
+            docs_link: settings['general_setting.docs_link'],
           },
           Logo: settings.Logo,
           Footer: settings.Footer,

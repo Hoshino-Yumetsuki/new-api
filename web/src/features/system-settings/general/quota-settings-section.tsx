@@ -17,6 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { zodResolver } from '@hookform/resolvers/zod'
+import i18next from 'i18next'
 import type { ChangeEvent } from 'react'
 import type { Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
@@ -33,7 +34,6 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
-import { Switch } from '@/components/ui/switch'
 import {
   Select,
   SelectContent,
@@ -41,6 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Switch } from '@/components/ui/switch'
 import { formatQuota } from '@/lib/format'
 
 import { FormDirtyIndicator } from '../components/form-dirty-indicator'
@@ -59,15 +60,22 @@ import { useUpdateOption } from '../hooks/use-update-option'
 
 const quotaSchema = z.object({
   QuotaForNewUser: z.coerce.number().min(0),
-  PreConsumedQuota: z.coerce.number().min(0),
   QuotaForInviter: z.coerce.number().min(0),
   QuotaForInvitee: z.coerce.number().min(0),
   TopUpLink: z.string(),
-  general_setting: z.object({
-    docs_link: z.string(),
-  }),
   quota_setting: z.object({
     enable_free_model_pre_consume: z.boolean(),
+    trust_quota_usd: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z.coerce
+        .number({ error: () => i18next.t('Please enter a valid number') })
+        .min(0, {
+          error: () => i18next.t('Must be greater than or equal to 0'),
+        })
+    ),
+    pre_consume_multiplier: z.coerce
+      .number({ error: () => i18next.t('Please enter a valid number') })
+      .positive({ error: () => i18next.t('Must be greater than 0') }),
   }),
   payment_setting: z.object({
     aff_commission_enabled: z.boolean(),
@@ -173,22 +181,56 @@ export function QuotaSettingsSection({
 
             <FormField
               control={form.control}
-              name='PreConsumedQuota'
+              name='quota_setting.trust_quota_usd'
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>{t('Pre-Consumed Quota')}</FormLabel>
+                  <FormLabel>
+                    {t('Wallet pre-consume bypass threshold (USD)')}
+                  </FormLabel>
                   <FormControl>
                     <Input
                       type='number'
+                      min={0}
+                      step='any'
                       value={field.value ?? ''}
-                      onChange={handleNumberChange(field.onChange)}
+                      onChange={field.onChange}
                       name={field.name}
                       onBlur={field.onBlur}
                       ref={field.ref}
                     />
                   </FormControl>
                   <FormDescription>
-                    {t('Quota consumed before charging users')}
+                    {t(
+                      'Skip pre-consumption when the wallet balance and limited API key balance both exceed this amount. Set to 0 to always pre-consume. Subscriptions and asynchronous tasks always reserve quota.'
+                    )}
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name='quota_setting.pre_consume_multiplier'
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>{t('Input pre-consume multiplier')}</FormLabel>
+                  <FormControl>
+                    <Input
+                      type='number'
+                      min={0}
+                      step='any'
+                      value={field.value ?? ''}
+                      onChange={field.onChange}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      ref={field.ref}
+                    />
+                  </FormControl>
+                  <FormDescription>
+                    {t(
+                      'Reserve the estimated input cost multiplied by this value, without estimating output tokens. Defaults to 1; positive decimals such as 0.5 and 1.5 are supported. Final charges use actual usage. Per-request and task prices are unaffected.'
+                    )}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -296,26 +338,6 @@ export function QuotaSettingsSection({
               )}
             />
 
-            <FormField
-              control={form.control}
-              name='general_setting.docs_link'
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>{t('Documentation Link')}</FormLabel>
-                  <FormControl>
-                    <Input
-                      placeholder={t('https://docs.example.com')}
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    {t('Link to your documentation site')}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
             <SettingsFormGridItem span='full'>
               <FormField
                 control={form.control}
@@ -325,7 +347,9 @@ export function QuotaSettingsSection({
                     <SettingsSwitchContent>
                       <FormLabel>{t('Payment Commission')}</FormLabel>
                       <FormDescription>
-                        {t('When enabled, inviters receive a commission when their invitees make a payment.')}
+                        {t(
+                          'When enabled, inviters receive a commission when their invitees make a payment.'
+                        )}
                       </FormDescription>
                     </SettingsSwitchContent>
                     <FormControl>
@@ -349,25 +373,35 @@ export function QuotaSettingsSection({
                     <FormItem>
                       <FormLabel>{t('Commission Type')}</FormLabel>
                       <FormControl>
-                        <Select value={field.value} onValueChange={field.onChange}>
+                        <Select
+                          value={field.value}
+                          onValueChange={field.onChange}
+                        >
                           <SelectTrigger>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value='percentage'>{t('Percentage')}</SelectItem>
-                            <SelectItem value='fixed'>{t('Fixed Amount')}</SelectItem>
+                            <SelectItem value='percentage'>
+                              {t('Percentage')}
+                            </SelectItem>
+                            <SelectItem value='fixed'>
+                              {t('Fixed Amount')}
+                            </SelectItem>
                           </SelectContent>
                         </Select>
                       </FormControl>
                       <FormDescription>
-                        {t('Choose whether the commission is a percentage of the payment or a fixed quota amount.')}
+                        {t(
+                          'Choose whether the commission is a percentage of the payment or a fixed quota amount.'
+                        )}
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
 
-                {form.watch('payment_setting.aff_commission_type') === 'percentage' ? (
+                {form.watch('payment_setting.aff_commission_type') ===
+                'percentage' ? (
                   <FormField
                     control={form.control}
                     name='payment_setting.aff_commission_rate'
@@ -388,7 +422,9 @@ export function QuotaSettingsSection({
                           />
                         </FormControl>
                         <FormDescription>
-                          {t('Percentage of the paid quota awarded to the inviter (0–100).')}
+                          {t(
+                            'Percentage of the paid quota awarded to the inviter (0–100).'
+                          )}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -413,7 +449,9 @@ export function QuotaSettingsSection({
                           />
                         </FormControl>
                         <FormDescription>
-                          {t('Fixed quota amount credited to the inviter per payment.')}
+                          {t(
+                            'Fixed quota amount credited to the inviter per payment.'
+                          )}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
