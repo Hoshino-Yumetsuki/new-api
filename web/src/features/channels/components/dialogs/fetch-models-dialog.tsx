@@ -29,6 +29,8 @@ import { handleServerError } from '@/lib/handle-server-error'
 import { fetchUpstreamModels, updateChannel } from '../../api'
 import {
   channelsQueryKeys,
+  extractMappingSourceModels,
+  extractRedirectModels,
   normalizeModelName,
   parseModelsString,
 } from '../../lib'
@@ -64,8 +66,8 @@ export function FetchModelsDialog({
   open,
   onOpenChange,
   onModelsSelected,
-  redirectModels = [],
-  redirectSourceModels = [],
+  redirectModels: redirectModelsOverride,
+  redirectSourceModels: redirectSourceModelsOverride,
   customFetcher,
   existingModelsOverride,
   channelName,
@@ -85,6 +87,18 @@ export function FetchModelsDialog({
     () =>
       existingModelsOverride ?? parseModelsString(activeChannel?.models || ''),
     [existingModelsOverride, activeChannel?.models]
+  )
+  const redirectModels = useMemo(
+    () =>
+      redirectModelsOverride ??
+      extractRedirectModels(activeChannel?.model_mapping || ''),
+    [redirectModelsOverride, activeChannel?.model_mapping]
+  )
+  const redirectSourceModels = useMemo(
+    () =>
+      redirectSourceModelsOverride ??
+      extractMappingSourceModels(activeChannel?.model_mapping || ''),
+    [redirectSourceModelsOverride, activeChannel?.model_mapping]
   )
 
   const fetchedModelSet = new Set(normalizeModelNameList(fetchedModels))
