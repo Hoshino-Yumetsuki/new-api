@@ -22,10 +22,12 @@ import userEvent from '@testing-library/user-event'
 import { useState } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 
+import { Button } from '@/components/ui/button'
 import { api } from '@/lib/api'
 
 import { fetchModels } from '../../api'
-import { ChannelsProvider } from '../channels-provider'
+import { channelSchema } from '../../types'
+import { ChannelsProvider, useChannels } from '../channels-provider'
 import { FetchModelsDialog } from '../dialogs/fetch-models-dialog'
 import { UpstreamModelSelection } from '../upstream-model-selection'
 
@@ -108,6 +110,130 @@ test.each([
     await user.click(screen.getByRole('button', { name: 'Save Models' }))
     expect(select).toHaveBeenCalledWith(savedModels)
     expect(close).toHaveBeenCalledWith(false)
+    view.unmount()
+    client.clear()
+  }
+)
+
+function SavedChannelModelPicker(props: { mapping: string | null }) {
+  const { open, setOpen, setCurrentRow } = useChannels()
+  return (
+    <>
+      <Button
+        onClick={() => {
+          setCurrentRow(
+            channelSchema.parse({
+              id: 42,
+              type: 1,
+              key: '',
+              status: 1,
+              name: 'Redirect channel',
+              created_time: 0,
+              test_time: 0,
+              response_time: 0,
+              balance_updated_time: 0,
+              models: 'alias,manual-model',
+              model_mapping: props.mapping,
+            })
+          )
+          setOpen('fetch-models')
+        }}
+      >
+        Fetch channel models
+      </Button>
+      <FetchModelsDialog
+        open={open === 'fetch-models'}
+        onOpenChange={(value) => !value && setOpen(null)}
+      />
+    </>
+  )
+}
+
+test.each([
+  {
+    scenario: 'a saved redirect without its target in channel models',
+    mapping: '{"alias":"gpt-upstream"}',
+    models: ['gpt-upstream', 'gpt-new'],
+    existingCount: 1,
+    removedCount: 1,
+  },
+  {
+    scenario: 'a saved redirect with an empty upstream list',
+    mapping: '{"alias":"gpt-upstream"}',
+    models: [],
+    existingCount: 0,
+    removedCount: 1,
+  },
+  {
+    scenario: 'no saved redirect',
+    mapping: null,
+    models: ['gpt-upstream', 'gpt-new'],
+    existingCount: 0,
+    removedCount: 2,
+  },
+  {
+    scenario: 'malformed saved redirect JSON',
+    mapping: '{',
+    models: ['gpt-upstream', 'gpt-new'],
+    existingCount: 0,
+    removedCount: 2,
+  },
+])(
+  '$scenario classifies upstream models and only removes explicitly deselected models on save',
+  async ({ mapping, models, existingCount, removedCount }) => {
+    vi.spyOn(api, 'get').mockResolvedValue({
+      data: { success: true, data: models },
+    })
+    const save = vi.spyOn(api, 'put').mockResolvedValue({
+      data: { success: true },
+    })
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const user = userEvent.setup()
+    const view = render(
+      <QueryClientProvider client={client}>
+        <ChannelsProvider>
+          <SavedChannelModelPicker mapping={mapping} />
+        </ChannelsProvider>
+      </QueryClientProvider>
+    )
+
+    await user.click(
+      screen.getByRole('button', { name: 'Fetch channel models' })
+    )
+    const removedTab = await screen.findByRole('tab', {
+      name: `Removed Models (${removedCount})`,
+    })
+    expect(
+      screen.getByRole('tab', {
+        name: `New Models (${models.length - existingCount})`,
+      })
+    ).toBeVisible()
+    const existingTab = screen.getByRole('tab', {
+      name: `Existing Models (${existingCount})`,
+    })
+    if (existingCount > 0) {
+      await user.click(existingTab)
+      expect(
+        screen.getByRole('checkbox', { name: 'gpt-upstream' })
+      ).not.toBeChecked()
+    }
+    await user.click(removedTab)
+    if (removedCount === 1) {
+      expect(
+        screen.queryByRole('checkbox', { name: 'alias' })
+      ).not.toBeInTheDocument()
+    } else {
+      expect(screen.getByRole('checkbox', { name: 'alias' })).toBeChecked()
+    }
+    await user.click(screen.getByRole('checkbox', { name: 'manual-model' }))
+    await user.click(screen.getByRole('button', { name: 'Save Models' }))
+    expect(save).toHaveBeenCalledWith(
+      '/api/channel/',
+      { id: 42, models: 'alias' },
+      expect.anything()
+    )
     view.unmount()
     client.clear()
   }
