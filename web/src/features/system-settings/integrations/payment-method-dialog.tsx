@@ -37,10 +37,20 @@ import {
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
 
+import { getPaymentMethodError } from './epay-channels'
+
 const createPaymentMethodDialogSchema = (t: (key: string) => string) =>
   z.object({
     name: z.string().min(1, t('Payment method name is required')),
-    type: z.string().min(1, t('Payment type key is required')),
+    type: z
+      .string()
+      .min(1, t('Payment type key is required'))
+      .superRefine((value, ctx) => {
+        const error = getPaymentMethodError(value)
+        if (error) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: t(error) })
+        }
+      }),
     icon: z.string().optional(),
     min_topup: z.string().optional(),
   })
@@ -64,6 +74,7 @@ type PaymentMethodDialogProps = {
   onOpenChange: (open: boolean) => void
   onSave: (data: PaymentMethodData) => void
   editData?: PaymentMethodData | null
+  channelNames: string[]
 }
 
 const PAYMENT_TYPE_ICON_NAMES: Record<string, string> = {
@@ -73,30 +84,34 @@ const PAYMENT_TYPE_ICON_NAMES: Record<string, string> = {
   wxpay: 'SiWechat',
 }
 
-const getDefaultIconName = (type: string) => PAYMENT_TYPE_ICON_NAMES[type] ?? ''
+const getDefaultIconName = (type: string) =>
+  PAYMENT_TYPE_ICON_NAMES[type.slice(type.indexOf('.') + 1)] ?? ''
 
 export function PaymentMethodDialog({
   open,
   onOpenChange,
   onSave,
   editData,
+  channelNames,
 }: PaymentMethodDialogProps) {
   const { t } = useTranslation()
   const isEditMode = !!editData
   const paymentMethodDialogSchema = createPaymentMethodDialogSchema(t)
   const paymentTypeOptions = [
-    {
-      iconName: 'SiAlipay',
-      label: `${t('Alipay')} (Epay: alipay)`,
-      name: t('Alipay'),
-      value: 'alipay',
-    },
-    {
-      iconName: 'SiWechat',
-      label: `${t('WeChat Pay')} (Epay: wxpay)`,
-      name: t('WeChat Pay'),
-      value: 'wxpay',
-    },
+    ...channelNames.flatMap((channel) => [
+      {
+        iconName: 'SiAlipay',
+        label: `${t('Alipay')} (${channel}.alipay)`,
+        name: t('Alipay'),
+        value: `${channel}.alipay`,
+      },
+      {
+        iconName: 'SiWechat',
+        label: `${t('WeChat Pay')} (${channel}.wxpay)`,
+        name: t('WeChat Pay'),
+        value: `${channel}.wxpay`,
+      },
+    ]),
     {
       iconName: 'SiStripe',
       label: `${t('Stripe')} (stripe)`,
@@ -249,7 +264,7 @@ export function PaymentMethodDialog({
                 </FormControl>
                 <FormDescription className='leading-relaxed'>
                   {t(
-                    'Used to decide the payment flow. Built-in keys include stripe for Stripe and waffo_pancake for Waffo Pancake; other values are sent to Epay as the type parameter.'
+                    'Use channel.type for Epay (for example achannel.wxpay), up to 255 UTF-8 bytes.'
                   )}
                 </FormDescription>
                 <FormMessage />

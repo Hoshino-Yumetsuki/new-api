@@ -135,7 +135,11 @@ export function PaymentConfirmDialog({
                   paymentMethod?.icon,
                   paymentMethod?.name
                 )}
-                <span className='font-medium'>{paymentMethod?.name}</span>
+                <span className='font-medium'>
+                  {paymentMethod?.name}
+                  {paymentMethod?.type.includes('.') &&
+                    ` (${paymentMethod.type.split('.')[0]})`}
+                </span>
               </div>
             </div>
           </div>

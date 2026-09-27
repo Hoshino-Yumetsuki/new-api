@@ -41,6 +41,7 @@ import {
 type PaymentMethodsVisualEditorProps = {
   value: string
   onChange: (value: string) => void
+  channelNames: string[]
 }
 
 const PAYMENT_TYPE_ICON_NAMES: Record<string, string> = {
@@ -51,7 +52,7 @@ const PAYMENT_TYPE_ICON_NAMES: Record<string, string> = {
 }
 
 function getDefaultIconName(type: string) {
-  return PAYMENT_TYPE_ICON_NAMES[type] ?? ''
+  return PAYMENT_TYPE_ICON_NAMES[type.slice(type.indexOf('.') + 1)] ?? ''
 }
 
 function getEffectiveIconName(method: PaymentMethodData) {
@@ -61,25 +62,36 @@ function getEffectiveIconName(method: PaymentMethodData) {
 export function PaymentMethodsVisualEditor({
   value,
   onChange,
+  channelNames,
 }: PaymentMethodsVisualEditorProps) {
   const { t } = useTranslation()
   const paymentTemplates = [
-    {
-      name: t('Epay Alipay'),
-      template: {
-        icon: getDefaultIconName('alipay'),
-        name: '支付宝',
-        type: 'alipay',
+    ...channelNames.flatMap((channel) => [
+      {
+        name: `${t('Epay Alipay')} (${channel})`,
+        template: {
+          icon: getDefaultIconName('alipay'),
+          name: t('Alipay'),
+          type: `${channel}.alipay`,
+        },
       },
-    },
-    {
-      name: t('Epay WeChat Pay'),
-      template: {
-        icon: getDefaultIconName('wxpay'),
-        name: '微信',
-        type: 'wxpay',
+      {
+        name: `${t('Epay WeChat Pay')} (${channel})`,
+        template: {
+          icon: getDefaultIconName('wxpay'),
+          name: t('WeChat Pay'),
+          type: `${channel}.wxpay`,
+        },
       },
-    },
+      {
+        name: `${t('Custom Epay method')} (${channel})`,
+        template: {
+          icon: 'LuCreditCard',
+          name: t('Custom Epay method'),
+          type: `${channel}.custom`,
+        },
+      },
+    ]),
     {
       name: t('Stripe'),
       template: {
@@ -95,15 +107,6 @@ export function PaymentMethodsVisualEditor({
         icon: getDefaultIconName('waffo_pancake'),
         name: 'Waffo Pancake',
         type: 'waffo_pancake',
-      },
-    },
-    {
-      name: t('Custom Epay method'),
-      template: {
-        icon: 'LuCreditCard',
-        min_topup: '50',
-        name: '自定义1',
-        type: 'custom1',
       },
     },
   ]
@@ -468,6 +471,7 @@ export function PaymentMethodsVisualEditor({
         onOpenChange={setDialogOpen}
         onSave={handleSave}
         editData={editData}
+        channelNames={channelNames}
       />
     </div>
   )

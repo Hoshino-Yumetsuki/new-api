@@ -26,7 +26,14 @@ func GetTopUpInfo(c *gin.Context) {
 	complianceConfirmed := operation_setting.IsPaymentComplianceConfirmed()
 
 	// 获取支付方式
-	payMethods := operation_setting.PayMethods
+	payMethods := make([]map[string]string, 0, len(operation_setting.PayMethods))
+	for _, method := range operation_setting.PayMethods {
+		if operation_setting.IsNativePaymentMethod(method["type"]) {
+			payMethods = append(payMethods, method)
+		} else if _, _, err := operation_setting.ResolveEpayChannel(method["type"]); err == nil {
+			payMethods = append(payMethods, method)
+		}
+	}
 	if !complianceConfirmed {
 		payMethods = []map[string]string{}
 	}
@@ -133,18 +140,56 @@ type AmountRequest struct {
 	Amount int64 `json:"amount"`
 }
 
-func GetEpayClient() *epay.Client {
-	if operation_setting.PayAddress == "" || operation_setting.EpayId == "" || operation_setting.EpayKey == "" {
+func GetEpayClient(method string) *epay.Client {
+	channel, _, err := operation_setting.ResolveEpayChannel(method)
+	if err != nil {
 		return nil
 	}
 	withUrl, err := epay.NewClient(&epay.Config{
-		PartnerID: operation_setting.EpayId,
-		Key:       operation_setting.EpayKey,
-	}, operation_setting.PayAddress)
+		PartnerID: channel.EpayId,
+		Key:       channel.EpayKey,
+	}, channel.PayAddress)
 	if err != nil {
 		return nil
 	}
 	return withUrl
+}
+
+// Verify the gateway and amount against the persisted order, not callback routing fields.
+func verifyEpayCallback(params map[string]string, method string, money float64) (string, error) {
+	channel, _, err := operation_setting.ResolveEpayChannel(method)
+	if err != nil {
+		return "", err
+	}
+	if params["pid"] != channel.EpayId {
+		return "", errors.New("Epay merchant mismatch")
+	}
+	// Epay amounts are fixed-point decimals. Reject exponent notation before
+	// decimal comparison can allocate memory proportional to an untrusted exponent.
+	rawMoney := params["money"]
+	if len(rawMoney) == 0 || len(rawMoney) > 64 {
+		return "", errors.New("invalid Epay amount")
+	}
+	hasDecimalPoint := false
+	for i, digit := range rawMoney {
+		if digit == '.' && !hasDecimalPoint && i > 0 && i < len(rawMoney)-1 {
+			hasDecimalPoint = true
+			continue
+		}
+		if digit < '0' || digit > '9' {
+			return "", errors.New("invalid Epay amount")
+		}
+	}
+	paid, err := decimal.NewFromString(rawMoney)
+	expected, expectedErr := decimal.NewFromString(strconv.FormatFloat(money, 'f', 2, 64))
+	if err != nil || expectedErr != nil || !paid.IsPositive() || !paid.Equal(expected) {
+		return "", errors.New("Epay amount mismatch")
+	}
+	actualMethod := channel.Name + "." + params["type"]
+	if _, _, err := operation_setting.ParseEpayMethod(actualMethod); err != nil {
+		return "", err
+	}
+	return actualMethod, nil
 }
 
 func getPayMoney(amount int64, group string) float64 {
@@ -304,13 +349,19 @@ func RequestEpay(c *gin.Context) {
 	notifyUrl, _ := url.Parse(callBackAddress + "/api/user/epay/notify")
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("USR%dNO%s", id, tradeNo)
-	client := GetEpayClient()
-	if client == nil {
+	method, normalizeErr := operation_setting.NormalizeEpayMethod(req.PaymentMethod)
+	if normalizeErr != nil {
+		common.ApiError(c, normalizeErr)
+		return
+	}
+	channel, upstreamType, resolveErr := operation_setting.ResolveEpayChannel(method)
+	client := GetEpayClient(method)
+	if resolveErr != nil || client == nil {
 		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "当前管理员未配置支付信息"})
 		return
 	}
 	uri, params, err := client.Purchase(&epay.PurchaseArgs{
-		Type:           req.PaymentMethod,
+		Type:           upstreamType,
 		ServiceTradeNo: tradeNo,
 		Name:           fmt.Sprintf("TUC%d", req.Amount),
 		Money:          strconv.FormatFloat(payMoney, 'f', 2, 64),
@@ -330,14 +381,16 @@ func RequestEpay(c *gin.Context) {
 		amount = dAmount.Div(dQuotaPerUnit).IntPart()
 	}
 	topUp := &model.TopUp{
-		UserId:          id,
-		Amount:          amount,
-		Money:           payMoney,
-		TradeNo:         tradeNo,
-		PaymentMethod:   req.PaymentMethod,
-		PaymentProvider: model.PaymentProviderEpay,
-		CreateTime:      time.Now().Unix(),
-		Status:          common.TopUpStatusPending,
+		UserId:     id,
+		Amount:     amount,
+		Money:      payMoney,
+		TradeNo:    tradeNo,
+		CreateTime: time.Now().Unix(),
+		Status:     common.TopUpStatusPending,
+	}
+	if err := topUp.SetEpayPaymentMethod(channel.Name + "." + upstreamType); err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "error", "data": "支付方式不存在"})
+		return
 	}
 	err = topUp.Insert()
 	if err != nil {
@@ -425,8 +478,15 @@ func EpayNotify(c *gin.Context) {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
-	client := GetEpayClient()
-	if client == nil {
+	topUp := model.GetTopUpByTradeNo(params["out_trade_no"])
+	if topUp == nil || !model.IsEpayPaymentProvider(topUp.PaymentProvider) {
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
+	}
+	method := topUp.EffectivePaymentMethod()
+	actualMethod, validationErr := verifyEpayCallback(params, method, topUp.Money)
+	client := GetEpayClient(method)
+	if validationErr != nil || client == nil {
 		logger.LogError(c.Request.Context(), fmt.Sprintf("易支付 client 未初始化 path=%q client_ip=%s", c.Request.RequestURI, c.ClientIP()))
 		_, err := c.Writer.Write([]byte("fail"))
 		if err != nil {
@@ -453,7 +513,7 @@ func EpayNotify(c *gin.Context) {
 		// 数据库行锁 + 事务内状态校验保证（多实例部署下同样安全）。
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		alreadyDone, err := model.RechargeEpay(verifyInfo.ServiceTradeNo, verifyInfo.Type, c.ClientIP())
+		alreadyDone, err := model.RechargeEpay(verifyInfo.ServiceTradeNo, actualMethod, c.ClientIP())
 		if err != nil {
 			switch {
 			case errors.Is(err, model.ErrTopUpNotFound):
@@ -512,6 +572,19 @@ func RequestAmount(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": strconv.FormatFloat(payMoney, 'f', 2, 64)})
 }
 
+type topUpHistoryItem struct {
+	*model.TopUp
+	PaymentMethod string `json:"payment_method"`
+}
+
+func topUpHistoryItems(topups []*model.TopUp) []topUpHistoryItem {
+	items := make([]topUpHistoryItem, len(topups))
+	for i, topup := range topups {
+		items[i] = topUpHistoryItem{TopUp: topup, PaymentMethod: topup.EffectivePaymentMethod()}
+	}
+	return items
+}
+
 func GetUserTopUps(c *gin.Context) {
 	userId := c.GetInt("id")
 	pageInfo := common.GetPageQuery(c)
@@ -533,7 +606,7 @@ func GetUserTopUps(c *gin.Context) {
 	}
 
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(topups)
+	pageInfo.SetItems(topUpHistoryItems(topups))
 	common.ApiSuccess(c, pageInfo)
 }
 
@@ -558,7 +631,7 @@ func GetAllTopUps(c *gin.Context) {
 	}
 
 	pageInfo.SetTotal(int(total))
-	pageInfo.SetItems(topups)
+	pageInfo.SetItems(topUpHistoryItems(topups))
 	common.ApiSuccess(c, pageInfo)
 }
 

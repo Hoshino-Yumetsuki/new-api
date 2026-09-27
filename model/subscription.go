@@ -10,6 +10,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/pkg/cachex"
+	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/samber/hot"
 	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
@@ -219,12 +220,29 @@ type SubscriptionOrder struct {
 
 	TradeNo         string `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod   string `json:"payment_method" gorm:"type:varchar(50)"`
+	EpayMethod      string `json:"-" gorm:"type:varchar(255)"`
 	PaymentProvider string `json:"payment_provider" gorm:"type:varchar(50);default:''"`
 	Status          string `json:"status"`
 	CreateTime      int64  `json:"create_time"`
 	CompleteTime    int64  `json:"complete_time"`
 
 	ProviderPayload string `json:"provider_payload" gorm:"type:text"`
+}
+
+func (o *SubscriptionOrder) EffectivePaymentMethod() string {
+	return effectivePaymentMethod(o.PaymentMethod, o.EpayMethod, o.PaymentProvider)
+}
+
+func (o *SubscriptionOrder) SetEpayPaymentMethod(method string) error {
+	legacyMethod, provider, err := epayPaymentFields(method)
+	if err != nil {
+		return err
+	}
+	if provider == PaymentProviderEpay {
+		method = ""
+	}
+	o.PaymentMethod, o.PaymentProvider, o.EpayMethod = legacyMethod, provider, method
+	return nil
 }
 
 func (o *SubscriptionOrder) Insert() error {
@@ -565,7 +583,8 @@ func refreshSubscriptionUserGroupCache(userId int, operation string) {
 
 // Complete a subscription order (idempotent). Creates a UserSubscription snapshot from the plan.
 // expectedPaymentProvider guards against cross-gateway callback attacks (empty skips the check).
-// actualPaymentMethod updates the order's PaymentMethod to reflect the real payment type used (empty skips update).
+// Epay accepts both storage providers, but still verifies the persisted channel under the row lock.
+// actualPaymentMethod is qualified for Epay and updates both full and legacy payment fields.
 func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedPaymentProvider string, actualPaymentMethod string) error {
 	if tradeNo == "" {
 		return errors.New("tradeNo is empty")
@@ -584,8 +603,16 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(&order).Error; err != nil {
 			return ErrSubscriptionOrderNotFound
 		}
-		if expectedPaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider {
+		isEpay := IsEpayPaymentProvider(order.PaymentProvider)
+		if expectedPaymentProvider != "" && order.PaymentProvider != expectedPaymentProvider && !(expectedPaymentProvider == PaymentProviderEpay && isEpay) {
 			return ErrPaymentMethodMismatch
+		}
+		if isEpay {
+			channelName, _, methodErr := operation_setting.ParseEpayMethod(order.EffectivePaymentMethod())
+			actualChannel, _, actualErr := operation_setting.ParseEpayMethod(actualPaymentMethod)
+			if methodErr != nil || actualErr != nil || channelName != actualChannel {
+				return ErrPaymentMethodMismatch
+			}
 		}
 		if order.Status == common.TopUpStatusSuccess {
 			return nil
@@ -613,6 +640,11 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if subscription.PrevUserGroup != "" {
 			upgradeGroup = strings.TrimSpace(subscription.UpgradeGroup)
 		}
+		if isEpay {
+			if err := order.SetEpayPaymentMethod(actualPaymentMethod); err != nil {
+				return err
+			}
+		}
 		if err := upsertSubscriptionTopUpTx(tx, &order); err != nil {
 			return err
 		}
@@ -621,7 +653,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		if providerPayload != "" {
 			order.ProviderPayload = providerPayload
 		}
-		if actualPaymentMethod != "" && order.PaymentMethod != actualPaymentMethod {
+		if !isEpay && actualPaymentMethod != "" && order.PaymentMethod != actualPaymentMethod {
 			order.PaymentMethod = actualPaymentMethod
 		}
 		if err := tx.Save(&order).Error; err != nil {
@@ -630,7 +662,7 @@ func CompleteSubscriptionOrder(tradeNo string, providerPayload string, expectedP
 		logUserId = order.UserId
 		logPlanTitle = plan.Title
 		logMoney = order.Money
-		logPaymentMethod = order.PaymentMethod
+		logPaymentMethod = order.EffectivePaymentMethod()
 		return nil
 	})
 	if err != nil {
@@ -652,7 +684,7 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 	}
 	now := common.GetTimestamp()
 	var topup TopUp
-	if err := tx.Where("trade_no = ?", order.TradeNo).First(&topup).Error; err != nil {
+	if err := lockForUpdate(tx).Where("trade_no = ?", order.TradeNo).First(&topup).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			topup = TopUp{
 				UserId:        order.UserId,
@@ -660,20 +692,36 @@ func upsertSubscriptionTopUpTx(tx *gorm.DB, order *SubscriptionOrder) error {
 				Money:         order.Money,
 				TradeNo:       order.TradeNo,
 				PaymentMethod: order.PaymentMethod,
+				EpayMethod:    order.EpayMethod,
 				CreateTime:    order.CreateTime,
 				CompleteTime:  now,
 				Status:        common.TopUpStatusSuccess,
+			}
+			if IsEpayPaymentProvider(order.PaymentProvider) {
+				topup.PaymentProvider = order.PaymentProvider
 			}
 			return tx.Create(&topup).Error
 		}
 		return err
 	}
-	topup.Money = order.Money
-	if topup.PaymentMethod == "" {
+	if IsEpayPaymentProvider(order.PaymentProvider) {
+		channelName, _, methodErr := operation_setting.ParseEpayMethod(order.EffectivePaymentMethod())
+		previousChannel, _, previousErr := operation_setting.ParseEpayMethod(topup.EffectivePaymentMethod())
+		legacyMirror := topup.PaymentProvider == "" && topup.EpayMethod == "" && channelName == "default" && !operation_setting.IsNativePaymentMethod(topup.PaymentMethod)
+		if (!IsEpayPaymentProvider(topup.PaymentProvider) && !legacyMirror) || topup.UserId != order.UserId || topup.Amount != 0 || methodErr != nil {
+			return ErrPaymentMethodMismatch
+		}
+		if (topup.PaymentMethod != "" || topup.EpayMethod != "") && (previousErr != nil || channelName != previousChannel) {
+			return ErrPaymentMethodMismatch
+		}
+		topup.PaymentMethod, topup.EpayMethod, topup.PaymentProvider = order.PaymentMethod, order.EpayMethod, order.PaymentProvider
+	} else {
+		if IsEpayPaymentProvider(topup.PaymentProvider) || (topup.PaymentMethod != "" && topup.PaymentMethod != order.PaymentMethod) {
+			return ErrPaymentMethodMismatch
+		}
 		topup.PaymentMethod = order.PaymentMethod
-	} else if topup.PaymentMethod != order.PaymentMethod {
-		return ErrPaymentMethodMismatch
 	}
+	topup.Money = order.Money
 	if topup.CreateTime == 0 {
 		topup.CreateTime = order.CreateTime
 	}

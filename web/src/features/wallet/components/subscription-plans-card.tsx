@@ -71,8 +71,8 @@ interface SubscriptionPlansCardProps {
 }
 
 function getEpayMethods(payMethods: PaymentMethod[] = []): PaymentMethod[] {
-  return payMethods.filter(
-    (m) => m?.type && m.type !== 'stripe' && m.type !== 'creem'
+  return payMethods.filter((m) =>
+    /^[A-Za-z]{1,48}\.[\s\S]+$/.test(m?.type ?? '')
   )
 }
 

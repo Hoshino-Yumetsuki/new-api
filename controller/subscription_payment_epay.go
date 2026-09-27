@@ -78,28 +78,36 @@ func SubscriptionRequestEpay(c *gin.Context) {
 	tradeNo := fmt.Sprintf("%s%d", common.GetRandomString(6), time.Now().Unix())
 	tradeNo = fmt.Sprintf("SUBUSR%dNO%s", userId, tradeNo)
 
-	client := GetEpayClient()
-	if client == nil {
+	method, normalizeErr := operation_setting.NormalizeEpayMethod(req.PaymentMethod)
+	if normalizeErr != nil {
+		common.ApiError(c, normalizeErr)
+		return
+	}
+	channel, upstreamType, resolveErr := operation_setting.ResolveEpayChannel(method)
+	client := GetEpayClient(method)
+	if resolveErr != nil || client == nil {
 		common.ApiErrorMsg(c, "当前管理员未配置支付信息")
 		return
 	}
 
 	order := &model.SubscriptionOrder{
-		UserId:          userId,
-		PlanId:          plan.Id,
-		Money:           plan.PriceAmount,
-		TradeNo:         tradeNo,
-		PaymentMethod:   req.PaymentMethod,
-		PaymentProvider: model.PaymentProviderEpay,
-		CreateTime:      time.Now().Unix(),
-		Status:          common.TopUpStatusPending,
+		UserId:     userId,
+		PlanId:     plan.Id,
+		Money:      plan.PriceAmount,
+		TradeNo:    tradeNo,
+		CreateTime: time.Now().Unix(),
+		Status:     common.TopUpStatusPending,
+	}
+	if err := order.SetEpayPaymentMethod(channel.Name + "." + upstreamType); err != nil {
+		common.ApiErrorMsg(c, "支付方式不存在")
+		return
 	}
 	if err := order.Insert(); err != nil {
 		common.ApiErrorMsg(c, "创建订单失败")
 		return
 	}
 	uri, params, err := client.Purchase(&epay.PurchaseArgs{
-		Type:           req.PaymentMethod,
+		Type:           upstreamType,
 		ServiceTradeNo: tradeNo,
 		Name:           fmt.Sprintf("SUB:%s", plan.Title),
 		Money:          strconv.FormatFloat(plan.PriceAmount, 'f', 2, 64),
@@ -108,7 +116,7 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		ReturnUrl:      returnUrl,
 	})
 	if err != nil {
-		_ = model.ExpireSubscriptionOrder(tradeNo, model.PaymentProviderEpay)
+		_ = model.ExpireSubscriptionOrder(tradeNo, order.PaymentProvider)
 		common.ApiErrorMsg(c, "拉起支付失败")
 		return
 	}
@@ -141,8 +149,15 @@ func SubscriptionEpayNotify(c *gin.Context) {
 		return
 	}
 
-	client := GetEpayClient()
-	if client == nil {
+	order := model.GetSubscriptionOrderByTradeNo(params["out_trade_no"])
+	if order == nil || !model.IsEpayPaymentProvider(order.PaymentProvider) {
+		_, _ = c.Writer.Write([]byte("fail"))
+		return
+	}
+	method := order.EffectivePaymentMethod()
+	actualMethod, validationErr := verifyEpayCallback(params, method, order.Money)
+	client := GetEpayClient(method)
+	if validationErr != nil || client == nil {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
@@ -160,7 +175,7 @@ func SubscriptionEpayNotify(c *gin.Context) {
 	LockOrder(verifyInfo.ServiceTradeNo)
 	defer UnlockOrder(verifyInfo.ServiceTradeNo)
 
-	if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
+	if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, actualMethod); err != nil {
 		_, _ = c.Writer.Write([]byte("fail"))
 		return
 	}
@@ -196,8 +211,15 @@ func SubscriptionEpayReturn(c *gin.Context) {
 		return
 	}
 
-	client := GetEpayClient()
-	if client == nil {
+	order := model.GetSubscriptionOrderByTradeNo(params["out_trade_no"])
+	if order == nil || !model.IsEpayPaymentProvider(order.PaymentProvider) {
+		c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=fail"))
+		return
+	}
+	method := order.EffectivePaymentMethod()
+	actualMethod, validationErr := verifyEpayCallback(params, method, order.Money)
+	client := GetEpayClient(method)
+	if validationErr != nil || client == nil {
 		c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=fail"))
 		return
 	}
@@ -209,7 +231,7 @@ func SubscriptionEpayReturn(c *gin.Context) {
 	if verifyInfo.TradeStatus == epay.StatusTradeSuccess {
 		LockOrder(verifyInfo.ServiceTradeNo)
 		defer UnlockOrder(verifyInfo.ServiceTradeNo)
-		if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, verifyInfo.Type); err != nil {
+		if err := model.CompleteSubscriptionOrder(verifyInfo.ServiceTradeNo, common.GetJsonString(verifyInfo), model.PaymentProviderEpay, actualMethod); err != nil {
 			c.Redirect(http.StatusFound, paymentReturnPath("/wallet?pay=fail"))
 			return
 		}

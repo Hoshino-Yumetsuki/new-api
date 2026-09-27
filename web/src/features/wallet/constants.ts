@@ -41,7 +41,7 @@ export const PAYMENT_TYPES = {
 /**
  * Default payment type
  */
-export const DEFAULT_PAYMENT_TYPE = PAYMENT_TYPES.ALIPAY
+export const DEFAULT_PAYMENT_TYPE = ''
 
 /**
  * Payment icon colors (HEX format for react-icons)

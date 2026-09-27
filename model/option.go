@@ -1,9 +1,11 @@
 package model
 
 import (
+	"fmt"
 	"maps"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
@@ -16,6 +18,7 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/QuantumNous/new-api/setting/system_setting"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Option struct {
@@ -29,6 +32,8 @@ func AllOption() ([]*Option, error) {
 	err = DB.Find(&options).Error
 	return options, err
 }
+
+var epayOptionMutex sync.Mutex
 
 func InitOptionMap() {
 	common.OptionMapRWMutex.Lock()
@@ -88,10 +93,7 @@ func InitOptionMap() {
 	common.OptionMap["WorkerUrl"] = system_setting.WorkerUrl
 	common.OptionMap["WorkerValidKey"] = system_setting.WorkerValidKey
 	common.OptionMap["WorkerAllowHttpImageRequestEnabled"] = strconv.FormatBool(system_setting.WorkerAllowHttpImageRequestEnabled)
-	common.OptionMap["PayAddress"] = ""
 	common.OptionMap["CustomCallbackAddress"] = ""
-	common.OptionMap["EpayId"] = ""
-	common.OptionMap["EpayKey"] = ""
 	common.OptionMap["Price"] = strconv.FormatFloat(operation_setting.Price, 'f', -1, 64)
 	common.OptionMap["USDExchangeRate"] = strconv.FormatFloat(operation_setting.USDExchangeRate, 'f', -1, 64)
 	common.OptionMap["MinTopUp"] = strconv.Itoa(operation_setting.MinTopUp)
@@ -134,7 +136,7 @@ func InitOptionMap() {
 	common.OptionMap["AutoGroupEnabled"] = strconv.FormatBool(setting.AutoGroupEnabled)
 	common.OptionMap["DefaultUseAutoGroup"] = strconv.FormatBool(setting.DefaultUseAutoGroup)
 	common.OptionMap["MaxTokenAutoGroups"] = strconv.Itoa(setting.GetMaxTokenAutoGroups())
-	common.OptionMap["PayMethods"] = operation_setting.PayMethods2JsonString()
+	common.OptionMap["PayMethods"] = operation_setting.DefaultPayMethodsJSON
 	common.OptionMap["GitHubClientId"] = ""
 	common.OptionMap["GitHubClientSecret"] = ""
 	common.OptionMap["TelegramBotToken"] = ""
@@ -201,6 +203,8 @@ func InitOptionMap() {
 }
 
 func loadOptionsFromDatabase() {
+	epayOptionMutex.Lock()
+	defer epayOptionMutex.Unlock()
 	requestPolicyOptionMutex.Lock()
 	defer requestPolicyOptionMutex.Unlock()
 	defer func() {
@@ -210,9 +214,47 @@ func loadOptionsFromDatabase() {
 	}()
 	passkeyOptionMutex.Lock()
 	defer passkeyOptionMutex.Unlock()
-	options, _ := AllOption()
-	passkeyOptions := make(map[string]string)
+	options, err := AllOption()
+	if err != nil {
+		common.SysError("failed to load options: " + err.Error())
+		return
+	}
 	for _, option := range options {
+		if option.Key != operation_setting.EpayChannelsOptionKey {
+			continue
+		}
+		// Move pre-release channel credentials under the old sensitive-key filter.
+		// An existing private row is authoritative; never restore a stale secret.
+		err = DB.Transaction(func(tx *gorm.DB) error {
+			var source Option
+			result := lockForUpdate(tx).Where(&Option{Key: operation_setting.EpayChannelsOptionKey}).Find(&source)
+			if result.Error != nil || result.RowsAffected == 0 {
+				return result.Error
+			}
+			credentials := Option{Key: operation_setting.EpayChannelsStorageKey, Value: source.Value}
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&credentials).Error; err != nil {
+				return err
+			}
+			return tx.Delete(&source).Error
+		})
+		if err != nil {
+			common.SysError("failed to migrate Epay credential storage: " + err.Error())
+			return
+		}
+		options, err = AllOption()
+		if err != nil {
+			common.SysError("failed to reload options: " + err.Error())
+			return
+		}
+		break
+	}
+	passkeyOptions := make(map[string]string)
+	epayOptions := make(map[string]string)
+	for _, option := range options {
+		if isEpayOption(option.Key) {
+			epayOptions[option.Key] = option.Value
+			continue
+		}
 		if IsPasskeyDomainOption(option.Key) {
 			passkeyOptions[option.Key] = option.Value
 			continue
@@ -221,6 +263,9 @@ func loadOptionsFromDatabase() {
 		if err != nil {
 			common.SysLog("failed to update option map: " + err.Error())
 		}
+	}
+	if err := applyEpayOptions(epayOptions, true); err != nil {
+		common.SysError("invalid Epay options: " + err.Error())
 	}
 	common.MigrateBotProtectionFromLegacy()
 	applyPasskeyDomainOptions(passkeyOptions)
@@ -235,6 +280,9 @@ func SyncOptions(frequency int) {
 }
 
 func validateOptionValue(key string, value string) error {
+	if key == operation_setting.EpayChannelsStorageKey {
+		return fmt.Errorf("update %s instead of the internal credential option", operation_setting.EpayChannelsOptionKey)
+	}
 	if err := operation_setting.ValidateQuotaOption(key, value); err != nil {
 		return err
 	}
@@ -251,6 +299,9 @@ func validateOptionValue(key string, value string) error {
 }
 
 func UpdateOption(key string, value string) error {
+	if isEpayOption(key) {
+		return UpdateOptionsBulk(map[string]string{key: value})
+	}
 	if IsRequestPolicyOption(key) {
 		return UpdateRequestPolicyOptions(map[string]string{key: value})
 	}
@@ -288,6 +339,15 @@ func UpdateOptionsBulk(values map[string]string) error {
 	if len(values) == 0 {
 		return nil
 	}
+	var epayOptions map[string]string
+	for key := range values {
+		if isEpayOption(key) {
+			epayOptionMutex.Lock()
+			defer epayOptionMutex.Unlock()
+			epayOptions = make(map[string]string)
+			break
+		}
+	}
 	for key := range values {
 		if IsPasskeyDomainOption(key) {
 			_, err := UpdatePasskeyDomainOptions(values, false, "")
@@ -320,6 +380,13 @@ func UpdateOptionsBulk(values map[string]string) error {
 	}
 
 	err := DB.Transaction(func(tx *gorm.DB) error {
+		if epayOptions != nil {
+			var err error
+			values, err = prepareEpayOptions(tx, values, epayOptions)
+			if err != nil {
+				return err
+			}
+		}
 		for k, v := range values {
 			option := Option{Key: k}
 			if err := tx.FirstOrCreate(&option, Option{Key: k}).Error; err != nil {
@@ -336,7 +403,15 @@ func UpdateOptionsBulk(values map[string]string) error {
 		return err
 	}
 	for k, v := range values {
+		if isEpayOption(k) {
+			continue
+		}
 		if err := updateOptionMap(k, v); err != nil {
+			return err
+		}
+	}
+	if epayOptions != nil {
+		if err := applyEpayOptions(epayOptions, true); err != nil {
 			return err
 		}
 	}
@@ -347,6 +422,9 @@ func UpdateOptionsBulk(values map[string]string) error {
 }
 
 func updateOptionMap(key string, value string) (err error) {
+	if isEpayOption(key) {
+		return applyEpayOptions(map[string]string{key: value}, false)
+	}
 	if key == retiredThemeOptionKey {
 		common.OptionMapRWMutex.Lock()
 		delete(common.OptionMap, key)
@@ -514,8 +592,6 @@ func updateOptionMap(key string, value string) (err error) {
 		system_setting.WorkerUrl = value
 	case "WorkerValidKey":
 		system_setting.WorkerValidKey = value
-	case "PayAddress":
-		operation_setting.PayAddress = value
 	case "Chats":
 		err = setting.UpdateChatsByJsonString(value)
 	case "AutoGroups":
@@ -524,10 +600,6 @@ func updateOptionMap(key string, value string) (err error) {
 		err = setting.UpdateMaxTokenAutoGroups(value)
 	case "CustomCallbackAddress":
 		operation_setting.CustomCallbackAddress = value
-	case "EpayId":
-		operation_setting.EpayId = value
-	case "EpayKey":
-		operation_setting.EpayKey = value
 	case "Price":
 		operation_setting.Price, _ = strconv.ParseFloat(value, 64)
 	case "USDExchangeRate":
@@ -703,8 +775,6 @@ func updateOptionMap(key string, value string) (err error) {
 		err = operation_setting.AutomaticRetryStatusCodesFromString(value)
 	case "StreamCacheQueueLength":
 		setting.StreamCacheQueueLength, _ = strconv.Atoi(value)
-	case "PayMethods":
-		err = operation_setting.UpdatePayMethodsByJsonString(value)
 	case "WaffoPayMethods":
 		// WaffoPayMethods is read directly from OptionMap via setting.GetWaffoPayMethods().
 		// The value is already stored in OptionMap at the top of this function (line: common.OptionMap[key] = value).
@@ -749,4 +819,193 @@ func handleConfigUpdate(key, value string) bool {
 	}
 
 	return true // 已处理
+}
+
+func isEpayOption(key string) bool {
+	switch key {
+	case "PayAddress", "EpayId", "EpayKey", "PayMethods", operation_setting.EpayChannelsOptionKey, operation_setting.EpayChannelsStorageKey, operation_setting.EpayPayMethodsOptionKey:
+		return true
+	}
+	return false
+}
+
+func applyEpayOptions(values map[string]string, replace bool) error {
+	common.OptionMapRWMutex.Lock()
+	defer common.OptionMapRWMutex.Unlock()
+	options := make(map[string]string)
+	if !replace {
+		for key, value := range common.OptionMap {
+			if isEpayOption(key) {
+				options[key] = value
+			}
+		}
+	}
+	for key, value := range values {
+		if isEpayOption(key) {
+			options[key] = value
+		}
+	}
+	channels, methods, err := operation_setting.ComposeEpayOptions(options)
+	if err != nil {
+		return err
+	}
+	for _, key := range []string{"PayAddress", "EpayId", "EpayKey", "PayMethods", operation_setting.EpayChannelsOptionKey, operation_setting.EpayChannelsStorageKey, operation_setting.EpayPayMethodsOptionKey} {
+		delete(common.OptionMap, key)
+	}
+	maps.Copy(common.OptionMap, options)
+	// Keep the settings keys visible even when no corresponding row exists yet.
+	if _, exists := options["PayMethods"]; !exists {
+		common.OptionMap["PayMethods"] = operation_setting.DefaultPayMethodsJSON
+	}
+	if _, exists := options[operation_setting.EpayChannelsOptionKey]; !exists {
+		common.OptionMap[operation_setting.EpayChannelsOptionKey] = "[]"
+	}
+	operation_setting.PayAddress = options["PayAddress"]
+	operation_setting.EpayId = options["EpayId"]
+	operation_setting.EpayKey = options["EpayKey"]
+	operation_setting.GetPaymentSetting().EpayChannels = channels
+	operation_setting.PayMethods = methods
+	return nil
+}
+
+func prepareEpayOptions(tx *gorm.DB, values, stored map[string]string) (map[string]string, error) {
+	var rows []Option
+	if err := lockForUpdate(tx).Where(clause.IN{Column: clause.Column{Name: "key"}, Values: []any{"PayAddress", "EpayId", "EpayKey", "PayMethods", operation_setting.EpayChannelsStorageKey, operation_setting.EpayPayMethodsOptionKey}}).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		stored[row.Key] = row.Value
+	}
+	previous, previousMethods, err := operation_setting.ComposeEpayOptions(stored)
+	if err != nil {
+		return nil, err
+	}
+	values = maps.Clone(values)
+	if value, exists := values[operation_setting.EpayChannelsOptionKey]; exists {
+		channels, err := operation_setting.ParseEpayChannels(value, previous)
+		if err != nil {
+			return nil, err
+		}
+		values["PayAddress"], values["EpayId"], values["EpayKey"] = "", "", ""
+		named := make([]operation_setting.EpayChannel, 0, len(channels))
+		for _, channel := range channels {
+			if channel.Name == "default" {
+				values["PayAddress"], values["EpayId"], values["EpayKey"] = channel.PayAddress, channel.EpayId, channel.EpayKey
+			} else {
+				named = append(named, channel)
+			}
+		}
+		encoded, err := common.Marshal(named)
+		if err != nil {
+			return nil, err
+		}
+		values[operation_setting.EpayChannelsStorageKey] = string(encoded)
+		delete(values, operation_setting.EpayChannelsOptionKey)
+	}
+	for key, value := range values {
+		if isEpayOption(key) && key != "PayMethods" && key != operation_setting.EpayPayMethodsOptionKey {
+			stored[key] = value
+		}
+	}
+	channels, _, err := operation_setting.ComposeEpayOptions(stored)
+	if err != nil {
+		return nil, err
+	}
+	if value, exists := values["PayMethods"]; exists {
+		if _, alsoNamed := values[operation_setting.EpayPayMethodsOptionKey]; alsoNamed {
+			return nil, fmt.Errorf("update PayMethods or %s, not both", operation_setting.EpayPayMethodsOptionKey)
+		}
+		legacy, named, legacyOnly, err := splitEpayPayMethods(value, channels, previousMethods)
+		if err != nil {
+			return nil, err
+		}
+		values["PayMethods"] = legacy
+		if !legacyOnly {
+			values[operation_setting.EpayPayMethodsOptionKey] = named
+		}
+	} else if value, exists := values[operation_setting.EpayPayMethodsOptionKey]; exists {
+		legacy, named, _, err := splitEpayPayMethods(value, channels, nil)
+		if err != nil {
+			return nil, err
+		}
+		if legacy != "[]" {
+			return nil, fmt.Errorf("%s only accepts extended Epay methods", operation_setting.EpayPayMethodsOptionKey)
+		}
+		values[operation_setting.EpayPayMethodsOptionKey] = named
+	}
+	maps.Copy(stored, values)
+	return values, nil
+}
+
+func splitEpayPayMethods(value string, channels []operation_setting.EpayChannel, previous []map[string]string) (string, string, bool, error) {
+	var methods []map[string]string
+	if err := common.UnmarshalJsonStr(value, &methods); err != nil || methods == nil {
+		return "", "", false, fmt.Errorf("payment methods must be a JSON array")
+	}
+	legacy, named := []map[string]string{}, []map[string]string{}
+	legacyInput, modernInput := false, false
+	for _, method := range methods {
+		identifier := method["type"]
+		if operation_setting.IsNativePaymentMethod(identifier) {
+			legacy = append(legacy, method)
+			continue
+		}
+		if !strings.Contains(identifier, ".") {
+			identifier = "default." + identifier
+		} else {
+			qualified := false
+			for _, old := range previous {
+				if old["type"] == identifier {
+					qualified = true
+					break
+				}
+			}
+			if !qualified {
+				for _, old := range previous {
+					if old["type"] == "default."+identifier {
+						identifier = old["type"]
+						break
+					}
+				}
+			}
+		}
+		if identifier != method["type"] {
+			legacyInput = true
+		} else {
+			modernInput = true
+		}
+		name, upstreamType, err := operation_setting.ParseEpayMethod(identifier)
+		if err != nil {
+			return "", "", false, err
+		}
+		found := false
+		for _, channel := range channels {
+			if channel.Name == name {
+				if err := channel.Validate(); err != nil {
+					return "", "", false, err
+				}
+				found = true
+				break
+			}
+		}
+		if !found {
+			return "", "", false, fmt.Errorf("Epay channel not found: %s", name)
+		}
+		if name == "default" && operation_setting.IsNativePaymentMethod(upstreamType) {
+			return "", "", false, fmt.Errorf("default Epay type conflicts with native payment provider: %s", upstreamType)
+		}
+		if name == "default" && len(upstreamType) <= 50 {
+			method["type"] = upstreamType
+			legacy = append(legacy, method)
+		} else {
+			method["type"] = identifier
+			named = append(named, method)
+		}
+	}
+	legacyJSON, err := common.Marshal(legacy)
+	if err != nil {
+		return "", "", false, err
+	}
+	namedJSON, err := common.Marshal(named)
+	return string(legacyJSON), string(namedJSON), legacyInput && !modernInput && len(named) == 0, err
 }

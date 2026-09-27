@@ -335,9 +335,7 @@ export type BillingSettings = {
   AutoGroupEnabled: boolean
   DefaultUseAutoGroup: boolean
   'group_ratio_setting.group_special_usable_group': string
-  PayAddress: string
-  EpayId: string
-  EpayKey: string
+  'payment_setting.epay_channels': string
   Price: number
   MinTopUp: number
   CustomCallbackAddress: string

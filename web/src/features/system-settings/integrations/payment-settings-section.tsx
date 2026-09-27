@@ -20,7 +20,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Code2, Eye, ShieldAlert } from 'lucide-react'
 import * as React from 'react'
-import { useForm, type Resolver } from 'react-hook-form'
+import { useForm, type FieldErrors, type Resolver } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 import * as z from 'zod'
@@ -47,9 +47,10 @@ import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { handleServerError } from '@/lib/handle-server-error'
+import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
-import { confirmPaymentCompliance } from '../api'
+import { confirmPaymentCompliance, updateSystemOption } from '../api'
 import {
   SettingsForm,
   SettingsSwitchContent,
@@ -57,11 +58,17 @@ import {
 } from '../components/settings-form-layout'
 import { SettingsPageFormActions } from '../components/settings-page-context'
 import { SettingsSection } from '../components/settings-section'
-import { useUpdateOption } from '../hooks/use-update-option'
+import type { UpdateOptionRequest } from '../types'
 import { safeNumberFieldProps } from '../utils/numeric-field'
 import { AmountDiscountVisualEditor } from './amount-discount-visual-editor'
 import { AmountOptionsVisualEditor } from './amount-options-visual-editor'
 import { CreemProductsVisualEditor } from './creem-products-visual-editor'
+import {
+  getEpayChannelsError,
+  getPaymentMethodError,
+  parseEpayChannels,
+} from './epay-channels'
+import { EpayChannelsEditor } from './epay-channels-editor'
 import { PaymentMethodsVisualEditor } from './payment-methods-visual-editor'
 import {
   formatJsonForEditor,
@@ -96,13 +103,10 @@ function isHttpOriginUrl(value: string) {
 }
 
 const paymentSchema = z.object({
-  PayAddress: z.string().refine((value) => {
-    const trimmed = value.trim()
-    if (!trimmed) return true
-    return /^https?:\/\//.test(trimmed)
-  }, 'Provide a valid callback URL starting with http:// or https://'),
-  EpayId: z.string(),
-  EpayKey: z.string(),
+  EpayChannels: z.string().superRefine((value, ctx) => {
+    const error = getEpayChannelsError(value)
+    if (error) ctx.addIssue({ code: z.ZodIssueCode.custom, message: error })
+  }),
   Price: z.coerce.number().min(0),
   MinTopUp: z.coerce.number().min(0),
   CustomCallbackAddress: z
@@ -112,12 +116,17 @@ const paymentSchema = z.object({
       'Enter only a top-level callback domain, for example https://api.example.com, without any path.'
     ),
   PayMethods: z.string().superRefine((value, ctx) => {
-    const error = getJsonError(value)
+    const error = getJsonError(value, (parsed) => Array.isArray(parsed))
     if (error) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: error,
-      })
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: error })
+      return
+    }
+    for (const method of JSON.parse(value.trim() || '[]')) {
+      const methodError = getPaymentMethodError(method?.type ?? '')
+      if (methodError) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: methodError })
+        return
+      }
     }
   }),
   AmountOptions: z.string().superRefine((value, ctx) => {
@@ -224,7 +233,12 @@ export function PaymentSettingsSection({
 }: PaymentSettingsSectionProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const updateOption = useUpdateOption()
+  const updateOption = useMutation({
+    mutationFn: async (request: UpdateOptionRequest) =>
+      requireServerSuccess(await updateSystemOption(request)),
+    onError: (error: Error) =>
+      handleServerError(error, t('Failed to update setting')),
+  })
   const initialFormValues = React.useMemo<PaymentFormValues>(
     () => ({
       ...defaultValues,
@@ -238,7 +252,9 @@ export function PaymentSettingsSection({
     () => JSON.stringify(initialFormValues),
     [initialFormValues]
   )
+  const appliedDefaultsSignature = React.useRef(defaultsSignature)
 
+  const [activeTab, setActiveTab] = React.useState('general')
   const [payMethodsVisualMode, setPayMethodsVisualMode] = React.useState(true)
   const [amountOptionsVisualMode, setAmountOptionsVisualMode] =
     React.useState(true)
@@ -406,6 +422,13 @@ export function PaymentSettingsSection({
   )
 
   React.useEffect(() => {
+    if (
+      isSubmitting ||
+      appliedDefaultsSignature.current === defaultsSignature
+    ) {
+      return
+    }
+    appliedDefaultsSignature.current = defaultsSignature
     const parsedDefaults = JSON.parse(defaultsSignature) as PaymentFormValues
     initialRef.current = parsedDefaults
     form.reset({
@@ -415,17 +438,39 @@ export function PaymentSettingsSection({
       AmountDiscount: formatJsonForEditor(parsedDefaults.AmountDiscount),
       CreemProducts: formatJsonForEditor(parsedDefaults.CreemProducts),
     })
-  }, [defaultsSignature, form])
+  }, [defaultsSignature, form, isSubmitting])
+
+  const onInvalid = (errors: FieldErrors<PaymentFormValues>) => {
+    if (errors.EpayChannels) setActiveTab('epay')
+  }
 
   const onSubmit = async (values: PaymentFormValues) => {
+    const channelsError = getEpayChannelsError(
+      values.EpayChannels,
+      new Set(
+        parseEpayChannels(initialRef.current.EpayChannels).map(
+          (channel) => channel.name
+        )
+      )
+    )
+    if (channelsError) {
+      form.setError('EpayChannels', { message: channelsError })
+      setActiveTab('epay')
+      return
+    }
     const sanitized = {
-      PayAddress: removeTrailingSlash(values.PayAddress),
-      EpayId: values.EpayId.trim(),
-      EpayKey: values.EpayKey.trim(),
+      EpayChannels: JSON.stringify(
+        parseEpayChannels(values.EpayChannels).map((channel) => ({
+          ...channel,
+          pay_address: removeTrailingSlash(channel.pay_address.trim()),
+          epay_id: channel.epay_id.trim(),
+          epay_key: channel.epay_key.trim(),
+        }))
+      ),
       Price: values.Price,
       MinTopUp: values.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(values.CustomCallbackAddress),
-      PayMethods: values.PayMethods.trim(),
+      PayMethods: values.PayMethods.trim() || '[]',
       AmountOptions: values.AmountOptions.trim(),
       AmountDiscount: values.AmountDiscount.trim(),
       StripeApiSecret: values.StripeApiSecret.trim(),
@@ -461,9 +506,7 @@ export function PaymentSettingsSection({
     }
 
     const initial = {
-      PayAddress: removeTrailingSlash(initialRef.current.PayAddress),
-      EpayId: initialRef.current.EpayId.trim(),
-      EpayKey: initialRef.current.EpayKey.trim(),
+      EpayChannels: initialRef.current.EpayChannels,
       Price: initialRef.current.Price,
       MinTopUp: initialRef.current.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(
@@ -509,16 +552,14 @@ export function PaymentSettingsSection({
 
     const updates: Array<{ key: string; value: string | number | boolean }> = []
 
-    if (sanitized.PayAddress !== initial.PayAddress) {
-      updates.push({ key: 'PayAddress', value: sanitized.PayAddress })
-    }
-
-    if (sanitized.EpayId !== initial.EpayId) {
-      updates.push({ key: 'EpayId', value: sanitized.EpayId })
-    }
-
-    if (sanitized.EpayKey && sanitized.EpayKey !== initial.EpayKey) {
-      updates.push({ key: 'EpayKey', value: sanitized.EpayKey })
+    if (
+      normalizeJsonForComparison(sanitized.EpayChannels) !==
+      normalizeJsonForComparison(initial.EpayChannels)
+    ) {
+      updates.push({
+        key: 'payment_setting.epay_channels',
+        value: sanitized.EpayChannels,
+      })
     }
 
     if (sanitized.Price !== initial.Price) {
@@ -714,8 +755,24 @@ export function PaymentSettingsSection({
       return
     }
 
-    for (const update of updates) {
-      await updateOption.mutateAsync(update)
+    try {
+      for (const update of updates) {
+        await updateOption.mutateAsync(update)
+      }
+    } catch {
+      return
+    }
+    if (updates.length > 0) {
+      const redactedChannels = JSON.stringify(
+        parseEpayChannels(sanitized.EpayChannels).map((channel) => ({
+          ...channel,
+          epay_key: '',
+        }))
+      )
+      initialRef.current.EpayChannels = redactedChannels
+      form.setValue('EpayChannels', redactedChannels)
+      await queryClient.invalidateQueries({ queryKey: ['system-options'] })
+      toast.success(t('Setting updated successfully'))
     }
 
     if (!hasWaffoPancakeChanges) {
@@ -775,6 +832,16 @@ export function PaymentSettingsSection({
   }
 
   const currentFormValues = form.watch()
+  const epayChannelNames = [
+    ...new Set(
+      parseEpayChannels(currentFormValues.EpayChannels)
+        .map((channel) => channel.name)
+        .filter(
+          (name) =>
+            name.length > 0 && name.length <= 48 && !/[^A-Za-z]/.test(name)
+        )
+    ),
+  ]
   const waffoValues: WaffoSettingsValues = {
     WaffoEnabled: currentFormValues.WaffoEnabled,
     WaffoApiKey: currentFormValues.WaffoApiKey,
@@ -865,7 +932,7 @@ export function PaymentSettingsSection({
 
       <Form {...form}>
         <SettingsForm
-          onSubmit={form.handleSubmit(onSubmit)}
+          onSubmit={form.handleSubmit(onSubmit, onInvalid)}
           className={cn(
             'gap-y-8',
             !complianceConfirmed && 'pointer-events-none opacity-40'
@@ -873,11 +940,15 @@ export function PaymentSettingsSection({
           data-no-autosubmit='true'
         >
           <SettingsPageFormActions
-            onSave={form.handleSubmit(onSubmit)}
+            onSave={form.handleSubmit(onSubmit, onInvalid)}
             isSaving={updateOption.isPending || isSubmitting}
             saveLabel='Save all settings'
           />
-          <Tabs defaultValue='general' className='min-w-0'>
+          <Tabs
+            value={activeTab}
+            onValueChange={setActiveTab}
+            className='min-w-0'
+          >
             <div className='overflow-x-auto pb-1'>
               <TabsList className='grid min-w-[44rem] grid-cols-6'>
                 <TabsTrigger value='general'>{t('General')}</TabsTrigger>
@@ -984,6 +1055,7 @@ export function PaymentSettingsSection({
                           <PaymentMethodsVisualEditor
                             value={field.value}
                             onChange={field.onChange}
+                            channelNames={epayChannelNames}
                           />
                         ) : (
                           <JsonCodeEditor
@@ -992,9 +1064,7 @@ export function PaymentSettingsSection({
                             name={field.name}
                             onBlur={field.onBlur}
                             textareaRef={field.ref}
-                            placeholder={t(
-                              '[{"name":"支付宝","type":"alipay","icon":"SiAlipay"}]'
-                            )}
+                            placeholder='[{"name":"Alipay","type":"achannel.alipay","icon":"SiAlipay"}]'
                             heightClassName='h-40 min-h-40 max-h-40'
                             aria-invalid={Boolean(
                               form.formState.errors.PayMethods
@@ -1004,7 +1074,10 @@ export function PaymentSettingsSection({
                       </FormControl>
                       <FormDescription>
                         {t(
-                          'Configured as PayMethods JSON. The type value decides which payment flow is used: stripe for Stripe, waffo_pancake for Waffo Pancake, and other values are sent to Epay as the type parameter.'
+                          'Use channel.type for Epay (for example achannel.wxpay), up to 255 UTF-8 bytes.'
+                        )}{' '}
+                        {t(
+                          'Built-in payment keys stripe, creem, waffo and waffo_pancake remain unchanged.'
                         )}
                       </FormDescription>
                       <FormMessage />
@@ -1155,30 +1228,22 @@ export function PaymentSettingsSection({
                   </AlertDescription>
                 </Alert>
 
-                <div className='grid gap-6 md:grid-cols-2'>
-                  <FormField
-                    control={form.control}
-                    name='PayAddress'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Epay endpoint')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder={t('https://pay.example.com')}
-                            {...field}
-                            onChange={(event) =>
-                              field.onChange(event.target.value)
-                            }
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          {t('Base address provided by your Epay service')}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                <FormField
+                  control={form.control}
+                  name='EpayChannels'
+                  render={({ field, fieldState }) => (
+                    <FormItem>
+                      <EpayChannelsEditor
+                        value={field.value}
+                        onChange={field.onChange}
+                        disabled={isSubmitting}
+                        error={fieldState.error?.message}
+                      />
+                    </FormItem>
+                  )}
+                />
 
+                <div className='grid gap-6 md:grid-cols-2'>
                   <FormField
                     control={form.control}
                     name='CustomCallbackAddress'
@@ -1198,54 +1263,6 @@ export function PaymentSettingsSection({
                           {t(
                             'Only enter the site origin, for example https://api.example.com. Do not include any path such as /api/user/epay/notify. Leave blank to use the server address.'
                           )}
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-
-                <div className='grid gap-6 md:grid-cols-2'>
-                  <FormField
-                    control={form.control}
-                    name='EpayId'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Epay merchant ID')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder='10001'
-                            autoComplete='off'
-                            {...field}
-                            onChange={(event) =>
-                              field.onChange(event.target.value)
-                            }
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name='EpayKey'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('Epay secret key')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            type='password'
-                            placeholder={t('Enter new key to update')}
-                            autoComplete='new-password'
-                            {...field}
-                            onChange={(event) =>
-                              field.onChange(event.target.value)
-                            }
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          {t('Leave blank unless rotating the secret')}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>

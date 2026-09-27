@@ -10,36 +10,14 @@ import (
 )
 
 var PayAddress = ""
-var CustomCallbackAddress = ""
 var EpayId = ""
 var EpayKey = ""
+var CustomCallbackAddress = ""
 var Price = 7.3
 var MinTopUp = 1
 var USDExchangeRate = 7.3
 
-var PayMethods = []map[string]string{
-	{
-		"name": "支付宝",
-		"icon": "SiAlipay",
-		"type": "alipay",
-	},
-	{
-		"name": "微信",
-		"icon": "SiWechat",
-		"type": "wxpay",
-	},
-	{
-		"name":      "自定义1",
-		"icon":      "LuCreditCard",
-		"type":      "custom1",
-		"min_topup": "50",
-	},
-}
-
-func UpdatePayMethodsByJsonString(jsonString string) error {
-	PayMethods = make([]map[string]string, 0)
-	return common.Unmarshal([]byte(jsonString), &PayMethods)
-}
+var PayMethods = []map[string]string{}
 
 func PayMethods2JsonString() string {
 	jsonBytes, err := common.Marshal(PayMethods)
@@ -50,6 +28,10 @@ func PayMethods2JsonString() string {
 }
 
 func ContainsPayMethod(method string) bool {
+	method, err := NormalizeEpayMethod(method)
+	if err != nil {
+		return false
+	}
 	for _, payMethod := range PayMethods {
 		if payMethod["type"] == method {
 			return true

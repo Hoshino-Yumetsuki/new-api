@@ -20,6 +20,7 @@ type TopUp struct {
 	Money           float64 `json:"money"`
 	TradeNo         string  `json:"trade_no" gorm:"unique;type:varchar(255);index"`
 	PaymentMethod   string  `json:"payment_method" gorm:"type:varchar(50)"`
+	EpayMethod      string  `json:"-" gorm:"type:varchar(255)"`
 	PaymentProvider string  `json:"payment_provider" gorm:"type:varchar(50);default:''"`
 	CreateTime      int64   `json:"create_time"`
 	CompleteTime    int64   `json:"complete_time"`
@@ -36,6 +37,7 @@ const (
 
 const (
 	PaymentProviderEpay         = "epay"
+	PaymentProviderEpayChannel  = "epay_channel"
 	PaymentProviderStripe       = "stripe"
 	PaymentProviderCreem        = "creem"
 	PaymentProviderWaffo        = "waffo"
@@ -51,6 +53,56 @@ var (
 	ErrTopUpQuotaLimitExceeded  = errors.New("top-up quota limit exceeded")
 	ErrWalletQuotaLimitExceeded = errors.New("wallet quota limit exceeded")
 )
+
+// IsEpayPaymentProvider excludes legacy empty providers and native gateways.
+func IsEpayPaymentProvider(provider string) bool {
+	return provider == PaymentProviderEpay || provider == PaymentProviderEpayChannel
+}
+
+func epayPaymentFields(method string) (string, string, error) {
+	channel, upstreamType, err := operation_setting.ParseEpayMethod(method)
+	if err != nil {
+		return "", "", err
+	}
+	provider := PaymentProviderEpay
+	if channel != "default" || len(upstreamType) > 50 {
+		provider = PaymentProviderEpayChannel
+	}
+	if len(upstreamType) > 50 {
+		upstreamType = "epay"
+	}
+	return upstreamType, provider, nil
+}
+
+func effectivePaymentMethod(method, epayMethod, provider string) string {
+	if provider == PaymentProviderEpayChannel {
+		return epayMethod
+	}
+	// Old binaries can change the actual type without updating EpayMethod.
+	// Empty providers occur in historical subscription top-up mirrors only;
+	// this display projection does not authorize their callback settlement.
+	if provider == PaymentProviderEpay || (provider == "" && method != "" && !operation_setting.IsNativePaymentMethod(method)) {
+		return "default." + method
+	}
+	return method
+}
+
+func (topUp *TopUp) EffectivePaymentMethod() string {
+	return effectivePaymentMethod(topUp.PaymentMethod, topUp.EpayMethod, topUp.PaymentProvider)
+}
+
+// SetEpayPaymentMethod keeps legacy columns usable without truncating the full identifier.
+func (topUp *TopUp) SetEpayPaymentMethod(method string) error {
+	legacyMethod, provider, err := epayPaymentFields(method)
+	if err != nil {
+		return err
+	}
+	if provider == PaymentProviderEpay {
+		method = ""
+	}
+	topUp.PaymentMethod, topUp.PaymentProvider, topUp.EpayMethod = legacyMethod, provider, method
+	return nil
+}
 
 func (topUp *TopUp) Insert() error {
 	var err error
@@ -226,7 +278,12 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		if err := lockForUpdate(tx).Where(refCol+" = ?", tradeNo).First(topUp).Error; err != nil {
 			return ErrTopUpNotFound
 		}
-		if topUp.PaymentProvider != PaymentProviderEpay {
+		if !IsEpayPaymentProvider(topUp.PaymentProvider) {
+			return ErrPaymentMethodMismatch
+		}
+		channelName, _, methodErr := operation_setting.ParseEpayMethod(topUp.EffectivePaymentMethod())
+		actualChannel, _, actualErr := operation_setting.ParseEpayMethod(actualPaymentMethod)
+		if methodErr != nil || actualErr != nil || channelName != actualChannel {
 			return ErrPaymentMethodMismatch
 		}
 		if topUp.Status == common.TopUpStatusSuccess {
@@ -236,8 +293,8 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 		if topUp.Status != common.TopUpStatusPending {
 			return ErrTopUpStatusInvalid
 		}
-		if actualPaymentMethod != "" && topUp.PaymentMethod != actualPaymentMethod {
-			topUp.PaymentMethod = actualPaymentMethod
+		if err := topUp.SetEpayPaymentMethod(actualPaymentMethod); err != nil {
+			return err
 		}
 		var quotaErr error
 		quotaToAdd, quotaErr = common.WalletQuotaFromDecimalStrict(
@@ -265,7 +322,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 	syncCreditUserQuotaCache(topUp.UserId, quotaToAdd, "epay topup")
 
 	common.SysLog(fmt.Sprintf("易支付充值成功 trade_no=%s user_id=%d quota_to_add=%d money=%.2f", topUp.TradeNo, topUp.UserId, quotaToAdd, topUp.Money))
-	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money), callerIp, topUp.PaymentMethod, PaymentProviderEpay)
+	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money), callerIp, topUp.EffectivePaymentMethod(), PaymentProviderEpay)
 	return false, nil
 }
 
@@ -546,7 +603,7 @@ func ManualCompleteTopUp(tradeNo string, callerIp string) error {
 
 		userId = topUp.UserId
 		payMoney = topUp.Money
-		paymentMethod = topUp.PaymentMethod
+		paymentMethod = topUp.EffectivePaymentMethod()
 		return nil
 	})
 

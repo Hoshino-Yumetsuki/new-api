@@ -86,10 +86,25 @@ func GetOptions(c *gin.Context) {
 	optionValues := make(map[string]string)
 	common.OptionMapRWMutex.Lock()
 	for k, v := range common.OptionMap {
-		if k == "theme.frontend" || k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" {
+		if k == "theme.frontend" || k == "billing_setting.billing_mode" || k == "billing_setting.billing_expr" || k == operation_setting.EpayPayMethodsOptionKey {
 			continue
 		}
 		value := common.Interface2String(v)
+		if k == "PayMethods" {
+			value = operation_setting.PayMethods2JsonString()
+		}
+		if k == operation_setting.EpayChannelsOptionKey {
+			channels := slices.Clone(operation_setting.GetPaymentSetting().EpayChannels)
+			value = "[]"
+			for i := range channels {
+				channels[i].EpayKey = ""
+			}
+			if channels != nil {
+				if encoded, err := common.Marshal(channels); err == nil {
+					value = string(encoded)
+				}
+			}
+		}
 		isSensitiveKey := strings.HasSuffix(k, "Token") ||
 			strings.HasSuffix(k, "Secret") ||
 			strings.HasSuffix(k, "Key") ||
