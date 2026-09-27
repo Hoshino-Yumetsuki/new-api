@@ -234,6 +234,18 @@ For production, put the console behind HTTPS and configure your reverse proxy fo
 
 Pin an image version from [Releases](https://github.com/QuantumNous/new-api/releases), review its upgrade notes, and back up before upgrading. The `latest` tag follows published builds and can change; migrations and compatibility must be assessed for your existing installation.
 
+### Multiple Epay channels
+
+Add channels under **System Settings → Billing & Payment → Payment Gateway → Epay**, each with its own endpoint, merchant ID, and secret key. Channel names must be unique, case-sensitive strings of 1–48 English letters (`A–Z`, `a–z`). Leave the secret blank to retain the saved key for an existing channel name.
+
+Under **General**, add payment methods using `channel.upstream_type`, such as `achannel.wxpay` or `bchannel.alipay`, with a maximum of 255 UTF-8 bytes. Wallet top-ups and subscriptions select credentials by the prefix; the upstream `type` remains `wxpay`, `alipay`, or another original Epay type. Built-in identifiers `stripe`, `creem`, `waffo`, and `waffo_pancake` remain unchanged.
+
+The legacy channel appears as `default` in the new version while retaining the original `PayAddress`, `EpayId`, `EpayKey`, and unprefixed `PayMethods` storage. Startup neither deletes those options nor rewrites historical orders. Multiple channels use additive options and order fields; the existing `payment_method` column remains `varchar(50)`, and callback URLs stay unchanged. Old clients may still use configured raw default-channel payment types.
+
+After a downgrade, the old version can continue using the default channel and compatible wallet/subscription orders. Named-channel orders and orders exceeding the old field capacity remain stored, but the old version rejects their callbacks; upgrading again restores their processing. Edits to legacy payment settings made while downgraded take effect after re-upgrade. Back up the database before downgrading, and do not delete or rename a channel or change its key while payments are pending.
+
+Named-channel secrets use separate storage recognized by the old version's sensitive-option filter, so downgrading does not expose them through the settings API. Existing pre-release channel credentials stored under the public option name are moved atomically to that private storage without replacing an already-saved private value.
+
 <a id="development"></a>
 
 ## Development and extensions
