@@ -34,6 +34,12 @@ describe('payment type classification', () => {
     expect(isWaffoPancakePayment(PAYMENT_TYPES.WAFFO)).toBe(false)
     expect(isStripePayment(PAYMENT_TYPES.STRIPE)).toBe(true)
   })
+
+  test('does not route prefixed upstream names to native providers', () => {
+    expect(isStripePayment('Alpha.stripe')).toBe(false)
+    expect(isWaffoPayment('Alpha.waffo')).toBe(false)
+    expect(isWaffoPancakePayment('Alpha.waffo_pancake')).toBe(false)
+  })
 })
 
 describe('payment dispatch', () => {
