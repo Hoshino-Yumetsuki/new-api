@@ -238,7 +238,7 @@ Pin an image version from [Releases](https://github.com/QuantumNous/new-api/rele
 
 Add channels under **System Settings → Billing & Payment → Payment Gateway → Epay**, each with its own endpoint, merchant ID, and secret key. Channel names must be unique, case-sensitive strings of 1–48 English letters (`A–Z`, `a–z`). Leave the secret blank to retain the saved key for an existing channel name.
 
-Under **General**, add payment methods using `channel.upstream_type`, such as `achannel.wxpay` or `bchannel.alipay`, with a maximum of 255 UTF-8 bytes. Wallet top-ups and subscriptions select credentials by the prefix; the upstream `type` remains `wxpay`, `alipay`, or another original Epay type. Built-in identifiers `stripe`, `creem`, `waffo`, and `waffo_pancake` remain unchanged.
+Under **General**, add payment methods using `channel.upstream_type`, such as `achannel.wxpay` or `bchannel.alipay`, with a maximum of 255 UTF-8 bytes. Wallet top-ups and subscriptions select credentials by the prefix; the upstream `type` remains `wxpay`, `alipay`, or another original Epay type. Built-in identifiers `stripe`, `creem`, `waffo`, and `waffo_pancake` remain unchanged. Payment method names shown in the wallet do not append channel names in parentheses; use distinct display names when users need to distinguish channels.
 
 The legacy channel appears as `default` in the new version while retaining the original `PayAddress`, `EpayId`, `EpayKey`, and unprefixed `PayMethods` storage. Startup neither deletes those options nor rewrites historical orders. Multiple channels use additive options and order fields; the existing `payment_method` column remains `varchar(50)`, and callback URLs stay unchanged. Old clients may still use configured raw default-channel payment types.
 

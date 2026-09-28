@@ -240,7 +240,7 @@ docker compose logs -f new-api
 
 在「系统设置 → 计费与支付 → 支付网关 → 易支付」中添加通道，分别配置支付地址、商户 ID 和密钥。通道名称为 1–48 个英文字母（`A–Z`、`a–z`），区分大小写且不能重复；已有通道的密钥留空时保留原值。
 
-在「通用」页添加支付方式，处理标识使用 `通道名.上游类型`，如 `achannel.wxpay`、`bchannel.alipay`，UTF-8 编码总长度不超过 255 字节。充值和订阅均按前缀选择通道，提交给易支付的 `type` 仍为 `wxpay`、`alipay` 等原始上游类型；内置的 `stripe`、`creem`、`waffo` 和 `waffo_pancake` 标识不变。
+在「通用」页添加支付方式，处理标识使用 `通道名.上游类型`，如 `achannel.wxpay`、`bchannel.alipay`，UTF-8 编码总长度不超过 255 字节。充值和订阅均按前缀选择通道，提交给易支付的 `type` 仍为 `wxpay`、`alipay` 等原始上游类型；内置的 `stripe`、`creem`、`waffo` 和 `waffo_pancake` 标识不变。钱包中的付款方式名称不自动追加括号通道名；需要让用户区分通道时，请设置不同的显示名称。
 
 旧单通道在新版中显示为 `default`，仍使用原来的 `PayAddress`、`EpayId`、`EpayKey` 和无前缀的 `PayMethods` 存储；启动时不会删除这些配置或改写历史订单。多通道使用新增配置和订单扩展字段，原 `payment_method` 列保持 `varchar(50)`，回调地址不变。旧客户端仍可使用已配置的默认通道原始支付类型。
 
