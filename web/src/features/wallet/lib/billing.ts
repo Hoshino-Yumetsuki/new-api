@@ -73,12 +73,10 @@ export function getPaymentMethodName(
   t?: (key: string) => string
 ): string {
   const separator = method.indexOf('.')
-  const channel = method.slice(0, separator)
   const upstreamType = separator >= 0 ? method.slice(separator + 1) : ''
   const type = upstreamType || method
   const name = PAYMENT_METHOD_NAMES[type] || type
-  const label = t ? t(name) : name
-  return upstreamType ? `${label} (${channel})` : label
+  return t ? t(name) : name
 }
 
 /**

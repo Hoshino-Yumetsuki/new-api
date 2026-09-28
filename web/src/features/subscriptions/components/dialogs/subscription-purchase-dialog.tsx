@@ -376,9 +376,7 @@ export function SubscriptionPurchaseDialog(props: Props) {
                 <Combobox
                   options={(props.epayMethods || []).map((m) => ({
                     value: m.type,
-                    label: m.name
-                      ? `${m.name} (${m.type.split('.')[0]})`
-                      : m.type,
+                    label: m.name || m.type,
                   }))}
                   value={selectedEpayMethod}
                   onValueChange={(v) => v !== null && setSelectedEpayMethod(v)}
