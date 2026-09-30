@@ -283,6 +283,9 @@ func validateOptionValue(key string, value string) error {
 	if key == operation_setting.EpayChannelsStorageKey {
 		return fmt.Errorf("update %s instead of the internal credential option", operation_setting.EpayChannelsOptionKey)
 	}
+	if key == legacyAccessTokenRetireAtKey {
+		return errLegacyRetireAtReadOnly
+	}
 	if err := operation_setting.ValidateQuotaOption(key, value); err != nil {
 		return err
 	}
@@ -425,7 +428,7 @@ func updateOptionMap(key string, value string) (err error) {
 	if isEpayOption(key) {
 		return applyEpayOptions(map[string]string{key: value}, false)
 	}
-	if key == retiredThemeOptionKey {
+	if key == retiredThemeOptionKey || key == legacyAccessTokenRetireAtKey {
 		common.OptionMapRWMutex.Lock()
 		delete(common.OptionMap, key)
 		common.OptionMapRWMutex.Unlock()
