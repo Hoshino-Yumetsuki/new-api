@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -128,15 +129,32 @@ func applyAffiliateCommission(userId int, quota int) {
 
 	var commission int
 	if commType == operation_setting.AffCommissionTypePercentage {
-		commission = int(float64(quota) * rate / 100.0)
-	} else {
+		if math.IsNaN(rate) || math.IsInf(rate, 0) || rate < 0 || rate > 100 {
+			common.SysError(fmt.Sprintf("无效的邀请佣金比例: %v", rate))
+			return
+		}
+		var err error
+		commission, err = common.WalletQuotaFromDecimalStrict(
+			decimal.NewFromInt(int64(quota)).Mul(decimal.NewFromFloat(rate)).Div(decimal.NewFromInt(100)),
+		)
+		if err != nil {
+			common.SysError(fmt.Sprintf("计算邀请佣金失败: %v", err))
+			return
+		}
+	} else if commType == operation_setting.AffCommissionTypeFixed {
 		commission = fixedAmount
+	} else {
+		return
 	}
 	if commission <= 0 {
 		return
 	}
+	if err := common.ValidateWalletQuota(commission); err != nil {
+		common.SysError(fmt.Sprintf("无效的邀请佣金额度: %v", err))
+		return
+	}
 
-	if err := DB.Model(&User{}).Where("id = ?", user.InviterId).Updates(map[string]interface{}{
+	if err := DB.Model(&User{}).Where("id = ?", user.InviterId).Updates(map[string]any{
 		"aff_quota":   gorm.Expr("aff_quota + ?", commission),
 		"aff_history": gorm.Expr("aff_history + ?", commission),
 	}).Error; err != nil {
@@ -322,7 +340,7 @@ func RechargeEpay(tradeNo string, actualPaymentMethod string, callerIp string) (
 	syncCreditUserQuotaCache(topUp.UserId, quotaToAdd, "epay topup")
 
 	common.SysLog(fmt.Sprintf("易支付充值成功 trade_no=%s user_id=%d quota_to_add=%d money=%.2f", topUp.TradeNo, topUp.UserId, quotaToAdd, topUp.Money))
-	RecordTopupLog(topUp.UserId, fmt.Sprintf("使用在线充值成功，充值金额: %v，支付金额：%f", logger.LogQuota(quotaToAdd), topUp.Money), callerIp, topUp.EffectivePaymentMethod(), PaymentProviderEpay)
+	applyAffiliateCommission(topUp.UserId, quotaToAdd)
 	return false, nil
 }
 

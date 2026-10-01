@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	operation_setting "github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -197,13 +198,28 @@ func TestRechargeEpayCreditsQuotaExactlyOnce(t *testing.T) {
 	common.QuotaPerUnit = 500000
 	t.Cleanup(func() { common.QuotaPerUnit = oldQuotaPerUnit })
 
+	paymentSetting := operation_setting.GetPaymentSetting()
+	oldPaymentSetting := *paymentSetting
+	paymentSetting.AffCommissionEnabled = true
+	paymentSetting.AffCommissionType = operation_setting.AffCommissionTypePercentage
+	paymentSetting.AffCommissionRate = 5
+	t.Cleanup(func() { *paymentSetting = oldPaymentSetting })
+
+	inviter := insertUserForPaymentGuardTest(t, 500, 0)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", inviter.Id).Updates(map[string]any{"aff_code": "epay-inviter", "username": "epay-inviter"}).Error)
 	user := insertUserForPaymentGuardTest(t, 501, 0)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Update("inviter_id", inviter.Id).Error)
 	order := createEpayTestOrder(t, user.Id, "EPAYTESTONCE", PaymentProviderEpay, common.TopUpStatusPending)
 
 	alreadyDone, err := RechargeEpay(order.TradeNo, "default.alipay", "127.0.0.1")
 	require.NoError(t, err)
 	assert.False(t, alreadyDone)
 	assert.Equal(t, 2*500000, getUserQuotaForPaymentGuardTest(t, user.Id))
+
+	var creditedInviter User
+	require.NoError(t, DB.Select("aff_quota", "aff_history").Where("id = ?", inviter.Id).First(&creditedInviter).Error)
+	assert.Equal(t, 50_000, creditedInviter.AffQuota)
+	assert.Equal(t, 50_000, creditedInviter.AffHistoryQuota)
 
 	reloaded := GetTopUpByTradeNo(order.TradeNo)
 	require.NotNil(t, reloaded)
@@ -214,6 +230,10 @@ func TestRechargeEpayCreditsQuotaExactlyOnce(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, alreadyDone)
 	assert.Equal(t, 2*500000, getUserQuotaForPaymentGuardTest(t, user.Id))
+
+	require.NoError(t, DB.Select("aff_quota", "aff_history").Where("id = ?", inviter.Id).First(&creditedInviter).Error)
+	assert.Equal(t, 50_000, creditedInviter.AffQuota)
+	assert.Equal(t, 50_000, creditedInviter.AffHistoryQuota)
 }
 
 func TestRechargeEpayKeepsRedisAndDatabaseCreditInSync(t *testing.T) {
