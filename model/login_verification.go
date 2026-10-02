@@ -47,8 +47,8 @@ func getUserVerificationState(tx *gorm.DB, userID int, forUpdate bool) (*UserVer
 
 // CreateUserSessionFromLoginFlow commits the one-time login authorization and
 // the resulting session together. The user lock serializes credential changes
-// and session issuance, including the per-user session limits. validate runs
-// inside the transaction and may write through tx.
+// and session issuance limits. validate runs inside the transaction and may
+// write through tx.
 func CreateUserSessionFromLoginFlow(token string, session *UserSession, validate func(*gorm.DB, *AuthFlow, *UserVerificationState) error) error {
 	if session == nil || validate == nil {
 		return ErrUserSessionInvalid
@@ -68,13 +68,7 @@ func CreateUserSessionFromLoginFlow(token string, session *UserSession, validate
 			return err
 		}
 		now := time.Now().Unix()
-		var activeCount, issuanceCount int64
-		if err := tx.Model(&UserSession{}).Where("user_id = ? AND status = ? AND expires_at > ?", session.UserID, UserSessionStatusActive, now).Count(&activeCount).Error; err != nil {
-			return err
-		}
-		if activeCount >= int64(common.UserSessionActiveLimit) {
-			return ErrUserSessionLimit
-		}
+		var issuanceCount int64
 		if err := tx.Model(&UserSession{}).Where("user_id = ? AND created_at > ?", session.UserID, now-common.UserSessionIssuanceWindowSeconds).Count(&issuanceCount).Error; err != nil {
 			return err
 		}

@@ -45,18 +45,15 @@ func setupUserSessionTest(t *testing.T) {
 	require.NoError(t, DB.AutoMigrate(&User{}, &UserSession{}))
 	require.NoError(t, DB.Exec("DELETE FROM user_sessions").Error)
 	oldRedisEnabled := common.RedisEnabled
-	oldActiveLimit := common.UserSessionActiveLimit
 	oldIssuanceLimit := common.UserSessionIssuanceLimit
 	oldIssuanceWindow := common.UserSessionIssuanceWindowSeconds
 	oldRevokedRetention := common.UserSessionRevokedRetentionDays
 	common.RedisEnabled = false
-	common.UserSessionActiveLimit = common.DefaultUserSessionActiveLimit
 	common.UserSessionIssuanceLimit = common.DefaultUserSessionIssuanceLimit
 	common.UserSessionIssuanceWindowSeconds = int64(common.DefaultUserSessionIssuanceWindowSeconds)
 	common.UserSessionRevokedRetentionDays = common.DefaultUserSessionRevokedRetentionDays
 	t.Cleanup(func() {
 		common.RedisEnabled = oldRedisEnabled
-		common.UserSessionActiveLimit = oldActiveLimit
 		common.UserSessionIssuanceLimit = oldIssuanceLimit
 		common.UserSessionIssuanceWindowSeconds = oldIssuanceWindow
 		common.UserSessionRevokedRetentionDays = oldRevokedRetention
