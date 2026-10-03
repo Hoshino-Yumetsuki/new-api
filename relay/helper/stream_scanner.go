@@ -257,6 +257,14 @@ func StreamScannerHandler(c *gin.Context, resp *http.Response, info *relaycommon
 			data := scanner.Text()
 			logger.LogDebug(c, "stream scanner data: %s", data)
 
+			// Some upstreams omit the newline between event: and data:.
+			// Recover only event-prefixed lines; never rewrite payload contents.
+			if strings.HasPrefix(data, "event:") {
+				if dataStart := strings.Index(data, "data:"); dataStart > len("event:") {
+					data = data[dataStart:]
+				}
+			}
+
 			if len(data) < 6 {
 				continue
 			}
