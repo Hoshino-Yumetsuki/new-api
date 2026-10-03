@@ -27,13 +27,26 @@ describe('cache hit rate', () => {
     expect((getCacheHitRate(142007, 133632) * 100).toFixed(1)).toBe('94.1')
   })
 
-  test('uses uncached and read input tokens for Anthropic hit rates', () => {
+  test('includes cache writes in total Anthropic input tokens', () => {
     expect(
-      (getCacheHitRate(24, 28, 16177, 'billing-usage-anthropic') * 100).toFixed(
-        1
-      )
-    ).toBe('53.8')
+      (
+        getCacheHitRate(35, 86210, 2941, 'billing-usage-anthropic') * 100
+      ).toFixed(1)
+    ).toBe('96.7')
   })
+
+  test('includes cache writes when Anthropic has no uncached input', () => {
+    expect(getCacheHitRate(0, 75, 25, 'billing-usage-anthropic')).toBe(0.75)
+  })
+
+  test.each([undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    'ignores missing or invalid Anthropic cache writes: %s',
+    (cacheWriteTokens) => {
+      expect(
+        getCacheHitRate(25, 75, cacheWriteTokens, 'billing-usage-anthropic')
+      ).toBe(0.75)
+    }
+  )
 
   test('keeps non-Anthropic cache rates based on total input tokens', () => {
     expect((getCacheHitRate(108418, 97147, 11269) * 100).toFixed(1)).toBe(

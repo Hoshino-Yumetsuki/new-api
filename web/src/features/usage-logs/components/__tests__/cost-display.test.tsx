@@ -64,15 +64,15 @@ describe('cache hit rate display', () => {
     expect(value).toHaveTextContent('93.0%')
     expect(value).toHaveStyle({ color: 'var(--color-emerald-600)' })
   })
-  test('shows Anthropic cache reads over uncached plus read input', () => {
+  test('shows Anthropic cache reads as a fraction of uncached, read and write input', () => {
     const rendered = renderCacheHitRate(
-      24,
-      28,
-      16177,
+      35,
+      86210,
+      2941,
       'billing-usage-anthropic'
     )
 
-    expect(rendered.container).toHaveTextContent('53.8%')
+    expect(rendered.container).toHaveTextContent('96.7%')
   })
 
   test('shows an em dash when the cache rate is zero', () => {
@@ -164,7 +164,9 @@ describe('log cost display', () => {
 
     expect(screen.getByText('$0.025')).toBeVisible()
     expect(screen.getByRole('img', { name: 'Subscription' })).toBeVisible()
-    expect(screen.queryByRole('img', { name: 'Wallet' })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('img', { name: 'Wallet' })
+    ).not.toBeInTheDocument()
   })
 
   test('keeps legacy cost visible without inventing a funding source', () => {

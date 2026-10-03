@@ -100,7 +100,7 @@ function isPositiveFiniteNumber(value: unknown): value is number {
 export function getCacheHitRate(
   promptTokens: number,
   cacheReadTokens: number,
-  _cacheWriteTokens = 0,
+  cacheWriteTokens = 0,
   billingPath?: string
 ): number {
   const input = Number.isFinite(promptTokens) ? Math.max(promptTokens, 0) : 0
@@ -108,11 +108,15 @@ export function getCacheHitRate(
     ? Math.max(cacheReadTokens, 0)
     : 0
   if (cacheRead === 0) return 0
+  const cacheWrite = Number.isFinite(cacheWriteTokens)
+    ? Math.max(cacheWriteTokens, 0)
+    : 0
 
+  // Anthropic prompt_tokens excludes both cache reads and cache writes.
   const denominator =
-    billingPath === 'billing-usage-anthropic' ? input + cacheRead : input
-  // Anthropic prompt_tokens excludes cache reads; cache writes are displayed separately,
-  // so they are intentionally excluded from the hit-rate denominator.
+    billingPath === 'billing-usage-anthropic'
+      ? input + cacheRead + cacheWrite
+      : input
   if (denominator === 0) return 0
   return Math.min(cacheRead / denominator, 1)
 }
