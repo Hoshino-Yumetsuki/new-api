@@ -1,15 +1,20 @@
 package claude
 
 import (
+	"io"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relay/helper"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
+	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -57,6 +62,103 @@ func TestResponseOpenAI2ClaudeToolUseInputIsObject(t *testing.T) {
 			require.Len(t, resp.Content, 1)
 			assert.Equal(t, "tool_use", resp.Content[0].Type)
 			assert.Equal(t, tt.want, resp.Content[0].Input)
+		})
+	}
+}
+
+func TestClaudeStreamHandlerEventDataFraming(t *testing.T) {
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	events := []struct{ name, data string }{
+		{"message_start", `{"type":"message_start","message":{"id":"msg_stream","model":"claude-3-5-sonnet","type":"message","role":"assistant","content":[],"usage":{"input_tokens":100,"output_tokens":1,"cache_read_input_tokens":300,"cache_creation_input_tokens":50}}}`},
+		{"content_block_start", `{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}`},
+		{"content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"literal event: message_startdata: stays unchanged"}}`},
+		{"content_block_stop", `{"type":"content_block_stop","index":0}`},
+		{"message_delta", `{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":20}}`},
+		{"message_stop", `{"type":"message_stop"}`},
+	}
+	for _, tc := range []struct {
+		name       string
+		newline    string
+		joined     int
+		fragmented bool
+	}{
+		{name: "standard LF", newline: "\n"},
+		{name: "standard CRLF", newline: "\r\n"},
+		{name: "joined message start", newline: "\n", joined: 1},
+		{name: "all event data pairs joined", newline: "\n", joined: len(events)},
+		{name: "joined pairs across reads and EOF", newline: "\r\n", joined: len(events), fragmented: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var upstream strings.Builder
+			// Only an event field may contain the missing event/data separator.
+			for _, line := range []string{
+				`: data: {"type":"error","error":{"type":"api_error"}}`,
+				`id: data: {"type":"error","error":{"type":"api_error"}}`,
+				`retry: data: {"type":"error","error":{"type":"api_error"}}`,
+			} {
+				upstream.WriteString(line + tc.newline)
+			}
+			for i, event := range events {
+				upstream.WriteString("event: " + event.name)
+				if i >= tc.joined {
+					upstream.WriteString(tc.newline)
+				}
+				upstream.WriteString("data: " + event.data + tc.newline + tc.newline)
+			}
+			var body io.Reader = strings.NewReader(upstream.String())
+			if tc.fragmented {
+				body = iotest.OneByteReader(strings.NewReader(strings.TrimRight(upstream.String(), "\r\n")))
+			}
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages?beta=true", nil)
+			info := &relaycommon.RelayInfo{
+				ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-3-5-sonnet"},
+				RelayFormat: types.RelayFormatClaude,
+				IsStream:    true,
+				DisablePing: true,
+			}
+			info.SetEstimatePromptTokens(1_000_000)
+			usage, apiErr := ClaudeStreamHandler(c, &http.Response{Body: io.NopCloser(body)}, info)
+			require.Nil(t, apiErr)
+			require.NotNil(t, usage)
+			assert.Equal(t, 100, usage.PromptTokens)
+			assert.Equal(t, 20, usage.CompletionTokens)
+			assert.Equal(t, 300, usage.PromptTokensDetails.CachedTokens)
+			assert.Equal(t, 50, usage.PromptTokensDetails.CachedCreationTokens)
+			require.NotNil(t, usage.BillingUsage)
+			billable, ok := usage.BillingUsage.CanonicalUsage()
+			require.True(t, ok)
+			assert.Equal(t, 100, billable.PromptTokens)
+			assert.Equal(t, 20, billable.CompletionTokens)
+			assert.Equal(t, 300, billable.PromptTokensDetails.CachedTokens)
+			assert.Equal(t, 50, billable.PromptTokensDetails.CachedCreationTokens)
+			assert.False(t, usage.BillingUsage.Estimated)
+			assert.False(t, common.GetContextKeyBool(c, constant.ContextKeyLocalCountTokens))
+			assert.Equal(t, string(relaycommon.ResponseOutcomeCompleted), info.StreamStatus.ResponseOutcome())
+
+			var eventName string
+			var received []string
+			for line := range strings.SplitSeq(w.Body.String(), "\n") {
+				if name, ok := strings.CutPrefix(line, "event: "); ok {
+					eventName = name
+				} else if data, ok := strings.CutPrefix(line, "data: "); ok {
+					var event dto.ClaudeResponse
+					require.NoError(t, common.UnmarshalJsonStr(data, &event))
+					assert.Equal(t, event.Type, eventName)
+					received = append(received, event.Type)
+					if event.Type == "content_block_delta" {
+						require.NotNil(t, event.Delta)
+						require.NotNil(t, event.Delta.Text)
+						assert.Equal(t, "literal event: message_startdata: stays unchanged", *event.Delta.Text)
+					}
+					eventName = ""
+				}
+			}
+			assert.Equal(t, []string{"message_start", "content_block_start", "content_block_delta", "content_block_stop", "message_delta", "message_stop"}, received)
 		})
 	}
 }
