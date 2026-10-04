@@ -15,6 +15,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -159,6 +160,90 @@ func TestClaudeStreamHandlerEventDataFraming(t *testing.T) {
 				}
 			}
 			assert.Equal(t, []string{"message_start", "content_block_start", "content_block_delta", "content_block_stop", "message_delta", "message_stop"}, received)
+		})
+	}
+}
+
+type claudeStreamReadError struct{}
+
+func (claudeStreamReadError) Read([]byte) (int, error) {
+	return 0, io.ErrUnexpectedEOF
+}
+
+func TestClaudeStreamHandlerInterruptedUsage(t *testing.T) {
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	for _, tc := range []struct {
+		name       string
+		startUsage string
+		tail       string
+		readError  bool
+		wantInput  int
+		wantOutput int
+		wantCache  int
+		wantError  bool
+		wantLocal  bool
+	}{
+		{name: "partial usage survives EOF", startUsage: `{"input_tokens":100,"output_tokens":1,"cache_read_input_tokens":300}`, wantInput: 100, wantOutput: 1, wantCache: 300},
+		{name: "partial usage survives transport failure", startUsage: `{"input_tokens":100,"output_tokens":1,"cache_read_input_tokens":300}`, readError: true, wantInput: 100, wantOutput: 1, wantCache: 300},
+		{name: "cached input permits zero uncached input", startUsage: `{"input_tokens":0,"output_tokens":1,"cache_read_input_tokens":300}`, readError: true, wantOutput: 1, wantCache: 300},
+		{name: "explicit zero usage is not missing usage", startUsage: `{"input_tokens":0,"output_tokens":0}`, readError: true},
+		{name: "terminal usage survives missing message stop", startUsage: `{"input_tokens":100,"output_tokens":1,"cache_read_input_tokens":300}`, tail: "data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":20}}\n\n", readError: true, wantInput: 100, wantOutput: 20, wantCache: 300},
+		{name: "terminal zero output remains authoritative", startUsage: `{"input_tokens":0,"output_tokens":1,"cache_read_input_tokens":300}`, tail: "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\ndata: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":0}}\n\n", readError: true, wantCache: 300},
+		{name: "partial text estimates only missing output", startUsage: `{"input_tokens":0,"output_tokens":1,"cache_read_input_tokens":300}`, tail: "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n", readError: true, wantOutput: 2, wantCache: 300, wantLocal: true},
+		{name: "unmetered interrupted text is not billable", tail: "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n", readError: true, wantError: true},
+		{name: "unmetered text without terminal event is not billable at EOF", tail: "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\n", wantError: true},
+		{name: "completed text permits missing usage fallback", tail: "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\n", wantInput: 1_000_000, wantOutput: 2, wantLocal: true},
+		{name: "ping only interrupted stream is not billable", tail: "data: {\"type\":\"ping\"}\n\n", readError: true, wantError: true},
+		{name: "unrecognized response is not billable", tail: "data: {\"unexpected\":true}\n\n", wantError: true},
+		{name: "truncated JSON remains an error", tail: "data: {\"type\":\"message_start\"\n", wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := tc.tail
+			if tc.startUsage != "" {
+				body = `data: {"type":"message_start","message":{"id":"msg_partial","model":"claude-test","usage":` + tc.startUsage + "}}\n\n" + body
+			}
+			var reader io.Reader = strings.NewReader(body)
+			if tc.readError {
+				reader = io.MultiReader(reader, claudeStreamReadError{})
+			}
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+			info := &relaycommon.RelayInfo{
+				ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-test"},
+				RelayFormat: types.RelayFormatClaude,
+				IsStream:    true,
+				DisablePing: true,
+			}
+			info.SetEstimatePromptTokens(1_000_000)
+			usage, apiErr := ClaudeStreamHandler(c, &http.Response{Body: io.NopCloser(reader)}, info)
+			if tc.wantError {
+				require.NotNil(t, apiErr)
+				assert.Nil(t, usage)
+				assert.False(t, service.ShouldRetryRelayError(c, apiErr, 2), "do not start another generation after an interrupted stream")
+				return
+			}
+			require.Nil(t, apiErr)
+			require.NotNil(t, usage)
+			if tc.readError {
+				assert.Equal(t, relaycommon.StreamEndReasonScannerErr, info.StreamStatus.EndReason)
+			}
+			assert.NotEqual(t, string(relaycommon.ResponseOutcomeCompleted), info.StreamStatus.ResponseOutcome())
+			assert.Equal(t, tc.wantInput, usage.PromptTokens)
+			assert.Equal(t, tc.wantOutput, usage.CompletionTokens)
+			assert.Equal(t, tc.wantCache, usage.PromptTokensDetails.CachedTokens)
+			assert.Equal(t, tc.wantLocal, common.GetContextKeyBool(c, constant.ContextKeyLocalCountTokens))
+			if tc.wantInput+tc.wantOutput+tc.wantCache > 0 {
+				require.NotNil(t, usage.BillingUsage)
+				billable, ok := usage.BillingUsage.CanonicalUsage()
+				require.True(t, ok)
+				assert.Equal(t, tc.wantInput, billable.PromptTokens)
+				assert.Equal(t, tc.wantOutput, billable.CompletionTokens)
+				assert.Equal(t, tc.wantCache, billable.PromptTokensDetails.CachedTokens)
+			}
 		})
 	}
 }
