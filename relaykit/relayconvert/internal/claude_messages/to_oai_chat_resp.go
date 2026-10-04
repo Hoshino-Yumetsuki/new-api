@@ -21,6 +21,8 @@ type ClaudeResponseInfo struct {
 	ResponseText strings.Builder
 	Usage        *dto.Usage
 	Done         bool
+	// A received usage object may legitimately contain only zero counts.
+	UsageReceived bool
 
 	// Only snapshots synthesized from partial display usage may be refreshed by
 	// later display deltas. Serialized BillingUsage always remains authoritative.
@@ -507,6 +509,7 @@ func FormatClaudeResponseInfo(claudeResponse *dto.ClaudeResponse, oaiResponse *d
 
 		if claudeResponse.Message != nil && claudeResponse.Message.Usage != nil {
 			messageUsage := claudeResponse.Message.Usage
+			claudeInfo.UsageReceived = true
 			claudeInfo.Usage.PromptTokens = messageUsage.InputTokens
 			claudeInfo.Usage.UsageSemantic = "anthropic"
 			claudeInfo.Usage.PromptTokensDetails.CachedTokens = messageUsage.CacheReadInputTokens
@@ -527,6 +530,7 @@ func FormatClaudeResponseInfo(claudeResponse *dto.ClaudeResponse, oaiResponse *d
 		}
 	} else if claudeResponse.Type == "message_delta" {
 		if claudeResponse.Usage != nil {
+			claudeInfo.UsageReceived = true
 			claudeInfo.Usage.UsageSemantic = "anthropic"
 			if claudeResponse.Usage.InputTokens > 0 {
 				claudeInfo.Usage.PromptTokens = claudeResponse.Usage.InputTokens
@@ -543,9 +547,7 @@ func FormatClaudeResponseInfo(claudeResponse *dto.ClaudeResponse, oaiResponse *d
 			if cacheCreation1h := claudeResponse.Usage.GetCacheCreation1hTokens(); cacheCreation1h > 0 {
 				claudeInfo.Usage.ClaudeCacheCreation1hTokens = cacheCreation1h
 			}
-			if claudeResponse.Usage.OutputTokens > 0 {
-				claudeInfo.Usage.CompletionTokens = claudeResponse.Usage.OutputTokens
-			}
+			claudeInfo.Usage.CompletionTokens = claudeResponse.Usage.OutputTokens
 			claudeInfo.Usage.TotalTokens = claudeInfo.Usage.PromptTokens + claudeInfo.Usage.CompletionTokens
 			updateClaudeStreamBillingUsage(claudeResponse.Usage, claudeInfo, true)
 		}

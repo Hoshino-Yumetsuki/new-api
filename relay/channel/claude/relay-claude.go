@@ -239,28 +239,25 @@ func countClaudeStreamBillableTools(c *gin.Context, info *relaycommon.RelayInfo,
 	}
 }
 
-func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, claudeInfo *ClaudeResponseInfo) {
-	if claudeInfo.Usage.PromptTokens == 0 {
-		//上游出错
+func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, claudeInfo *ClaudeResponseInfo) *types.NewAPIError {
+	if !claudeInfo.UsageReceived && (!claudeInfo.Done || claudeInfo.ResponseText.Len() == 0) {
+		return types.NewOpenAIError(fmt.Errorf("upstream stream ended before usage was received"), types.ErrorCodeEmptyResponse, http.StatusBadGateway, types.ErrOptionWithSkipRetry())
 	}
-	if claudeInfo.Usage.CompletionTokens == 0 || !claudeInfo.Done {
-		if common.DebugEnabled {
-			common.SysLog("claude response usage is not complete, maybe upstream error")
+	// Missing terminal usage does not make known input/cache counts missing.
+	// Estimate only output that was actually received, never an empty stream.
+	if !claudeInfo.UsageReceived || (!claudeInfo.Done && claudeInfo.ResponseText.Len() > 0) {
+		outputTokens := service.EstimateTokenByModel(info.UpstreamModelName, claudeInfo.ResponseText.String())
+		if outputTokens > claudeInfo.Usage.CompletionTokens {
+			claudeInfo.Usage.CompletionTokens = outputTokens
+			common.SetContextKey(c, constant.ContextKeyLocalCountTokens, true)
 		}
-		// 只补缺失字段，不整份覆盖——保留 message_start 已拿到的 cache 字段
-		fallback := service.ResponseText2Usage(c, claudeInfo.ResponseText.String(), info.UpstreamModelName, info.GetEstimatePromptTokens())
-		if claudeInfo.Usage.CompletionTokens == 0 ||
-			(!claudeInfo.Done && fallback.CompletionTokens > claudeInfo.Usage.CompletionTokens) {
-			claudeInfo.Usage.CompletionTokens = fallback.CompletionTokens
+		if !claudeInfo.UsageReceived {
+			claudeInfo.Usage.PromptTokens = info.GetEstimatePromptTokens()
+			common.SetContextKey(c, constant.ContextKeyLocalCountTokens, true)
 		}
-		if claudeInfo.Usage.PromptTokens == 0 {
-			claudeInfo.Usage.PromptTokens = fallback.PromptTokens
-		}
-		claudeInfo.Usage.TotalTokens = claudeInfo.Usage.PromptTokens + claudeInfo.Usage.CompletionTokens
 	}
-	if claudeInfo.Usage != nil {
-		claudeInfo.Usage.UsageSemantic = "anthropic"
-	}
+	claudeInfo.Usage.TotalTokens = claudeInfo.Usage.PromptTokens + claudeInfo.Usage.CompletionTokens
+	claudeInfo.Usage.UsageSemantic = "anthropic"
 	relayconvert.FinalizeClaudeStreamBillingUsage(claudeInfo)
 
 	if info.RelayFormat == types.RelayFormatClaude {
@@ -279,17 +276,18 @@ func HandleStreamFinalResponse(c *gin.Context, info *relaycommon.RelayInfo, clau
 		state, err := claudeToGeminiStreamState(info)
 		if err != nil {
 			common.SysLog("error creating Gemini stream state: " + err.Error())
-			return
+			return nil
 		}
 		results, err := service.FinalizeStreamResponse(c, info, state)
 		if err != nil {
 			common.SysLog("error finalizing Gemini stream response: " + err.Error())
-			return
+			return nil
 		}
 		if sendErr := sendGeminiStreamResults(c, results); sendErr != nil {
 			common.SysLog("send final Gemini stream response failed: " + sendErr.Error())
 		}
 	}
+	return nil
 }
 
 func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.RelayInfo) (*dto.Usage, *types.NewAPIError) {
@@ -312,7 +310,9 @@ func ClaudeStreamHandler(c *gin.Context, resp *http.Response, info *relaycommon.
 		return nil, err
 	}
 
-	HandleStreamFinalResponse(c, info, claudeInfo)
+	if err := HandleStreamFinalResponse(c, info, claudeInfo); err != nil {
+		return nil, err
+	}
 	return claudeInfo.Usage, nil
 }
 
