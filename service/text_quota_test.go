@@ -348,6 +348,24 @@ func TestCalculateTextQuotaSummaryUnifiedForClaudeSemantic(t *testing.T) {
 	require.Equal(t, messageSummary.CacheCreationTokens1h, chatSummary.CacheCreationTokens1h)
 	require.True(t, chatSummary.IsClaudeUsageSemantic)
 	require.Equal(t, 1488, chatSummary.Quota)
+
+	for _, tc := range []struct {
+		name  string
+		usage dto.Usage
+		want  int
+	}{
+		{name: "cache read without text tokens", usage: dto.Usage{PromptTokensDetails: dto.InputTokenDetails{CachedTokens: 300}}, want: 30},
+		{name: "cache creation without text tokens", usage: dto.Usage{PromptTokensDetails: dto.InputTokenDetails{CachedCreationTokens: 40}}, want: 50},
+		{name: "split cache creation without text tokens", usage: dto.Usage{ClaudeCacheCreation1hTokens: 20}, want: 40},
+		{name: "zero usage stays free"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			chatSummary := calculateTextQuotaSummary(ctx, chatRelayInfo, &tc.usage)
+			messageSummary := calculateTextQuotaSummary(ctx, messageRelayInfo, &tc.usage)
+			assert.Equal(t, tc.want, chatSummary.Quota)
+			assert.Equal(t, tc.want, messageSummary.Quota)
+		})
+	}
 }
 
 func TestCalculateTextQuotaSummaryUsesSplitClaudeCacheCreationRatios(t *testing.T) {
