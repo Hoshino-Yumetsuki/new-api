@@ -16,6 +16,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/relayconvert"
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/service"
+	"github.com/QuantumNous/new-api/tokenkit"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -189,6 +190,7 @@ func TestClaudeStreamHandlerInterruptedUsage(t *testing.T) {
 		{name: "partial usage survives EOF", startUsage: `{"input_tokens":100,"output_tokens":1,"cache_read_input_tokens":300}`, wantInput: 100, wantOutput: 1, wantCache: 300},
 		{name: "partial usage survives transport failure", startUsage: `{"input_tokens":100,"output_tokens":1,"cache_read_input_tokens":300}`, readError: true, wantInput: 100, wantOutput: 1, wantCache: 300},
 		{name: "cached input permits zero uncached input", startUsage: `{"input_tokens":0,"output_tokens":1,"cache_read_input_tokens":300}`, readError: true, wantOutput: 1, wantCache: 300},
+		{name: "cache-only usage survives transport failure", startUsage: `{"input_tokens":0,"output_tokens":0,"cache_read_input_tokens":300}`, readError: true, wantCache: 300},
 		{name: "explicit zero usage is not missing usage", startUsage: `{"input_tokens":0,"output_tokens":0}`, readError: true},
 		{name: "terminal usage survives missing message stop", startUsage: `{"input_tokens":100,"output_tokens":1,"cache_read_input_tokens":300}`, tail: "data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":20}}\n\n", readError: true, wantInput: 100, wantOutput: 20, wantCache: 300},
 		{name: "terminal zero output remains authoritative", startUsage: `{"input_tokens":0,"output_tokens":1,"cache_read_input_tokens":300}`, tail: "data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"hello\"}}\n\ndata: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":0}}\n\n", readError: true, wantCache: 300},
@@ -243,6 +245,62 @@ func TestClaudeStreamHandlerInterruptedUsage(t *testing.T) {
 				assert.Equal(t, tc.wantInput, billable.PromptTokens)
 				assert.Equal(t, tc.wantOutput, billable.CompletionTokens)
 				assert.Equal(t, tc.wantCache, billable.PromptTokensDetails.CachedTokens)
+			}
+		})
+	}
+}
+
+func TestClaudeResponsesStreamHandlerRetainsCacheOnlyUsage(t *testing.T) {
+	oldTimeout := constant.StreamingTimeout
+	constant.StreamingTimeout = 30
+	t.Cleanup(func() { constant.StreamingTimeout = oldTimeout })
+
+	for _, tc := range []struct {
+		name      string
+		tail      string
+		readError bool
+		failed    bool
+	}{
+		{name: "interrupted EOF", failed: true},
+		{name: "transport failure", readError: true, failed: true},
+		{name: "upstream error", tail: "data: {\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"upstream failed\"}}\n\n", failed: true},
+		{name: "malformed event", tail: "data: {\"type\":\n\n", failed: true},
+		{name: "completed", tail: "data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":0}}\n\ndata: {\"type\":\"message_stop\"}\n\n"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_cache\",\"model\":\"claude-test\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":0,\"output_tokens\":0,\"cache_read_input_tokens\":300}}}\n\n" + tc.tail
+			var reader io.Reader = strings.NewReader(body)
+			if tc.readError {
+				reader = io.MultiReader(reader, claudeStreamReadError{})
+			}
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			info := &relaycommon.RelayInfo{
+				ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-test"},
+				RelayFormat: types.RelayFormatOpenAIResponses,
+				IsStream:    true,
+				DisablePing: true,
+			}
+			info.SetEstimatePromptTokens(1_000_000)
+			usage, apiErr := ClaudeResponsesStreamHandler(c, &http.Response{Body: io.NopCloser(reader)}, info)
+			require.Nil(t, apiErr)
+			require.NotNil(t, usage)
+			assert.Zero(t, usage.PromptTokens)
+			assert.Zero(t, usage.CompletionTokens)
+			assert.Equal(t, 300, usage.PromptTokensDetails.CachedTokens)
+			require.NotNil(t, usage.BillingUsage)
+			billable, ok := usage.BillingUsage.CanonicalUsage()
+			require.True(t, ok)
+			assert.Equal(t, 300, billable.PromptTokensDetails.CachedTokens)
+			if tc.failed {
+				assert.Equal(t, string(relaycommon.ResponseOutcomeFailed), info.StreamStatus.ResponseOutcome())
+				assert.Contains(t, w.Body.String(), "event: response.failed")
+				assert.NotContains(t, w.Body.String(), "event: response.completed")
+			} else {
+				assert.Equal(t, string(relaycommon.ResponseOutcomeCompleted), info.StreamStatus.ResponseOutcome())
+				assert.Contains(t, w.Body.String(), "event: response.completed")
+				assert.NotContains(t, w.Body.String(), "event: response.failed")
 			}
 		})
 	}
@@ -413,6 +471,34 @@ func TestFormatClaudeResponseInfo_ContentBlockDelta(t *testing.T) {
 	if claudeInfo.ResponseText.String() != "hello" {
 		t.Errorf("ResponseText = %q, want %q", claudeInfo.ResponseText.String(), "hello")
 	}
+}
+
+// A stream cut off during an agent tool call must still estimate the call's
+// output tokens when the final usage never arrives.
+func TestClaudeStreamFallbackCountsInterruptedToolUse(t *testing.T) {
+	claudeInfo := &ClaudeResponseInfo{Usage: &dto.Usage{}}
+	events := []*dto.ClaudeResponse{
+		{Type: "message_start", Message: &dto.ClaudeMediaMessage{Usage: &dto.ClaudeUsage{InputTokens: 100}}},
+		{Type: "content_block_start", ContentBlock: &dto.ClaudeMediaMessage{Type: "tool_use", Id: "toolu_1", Name: "read_file"}},
+		{Type: "content_block_delta", Delta: &dto.ClaudeMediaMessage{Type: "input_json_delta", PartialJson: commonPointer(`{"path":`)}},
+		{Type: "content_block_delta", Delta: &dto.ClaudeMediaMessage{Type: "input_json_delta", PartialJson: commonPointer(`"main.go"}`)}},
+	}
+	for _, event := range events {
+		require.True(t, FormatClaudeResponseInfo(event, nil, claudeInfo))
+	}
+	require.Equal(t, `read_file{"path":"main.go"}`, claudeInfo.ResponseText.String())
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	info := &relaycommon.RelayInfo{
+		RelayFormat: types.RelayFormatClaude,
+		ChannelMeta: &relaycommon.ChannelMeta{UpstreamModelName: "claude-sonnet-5"},
+	}
+	info.SetEstimatePromptTokens(100)
+	require.Nil(t, HandleStreamFinalResponse(c, info, claudeInfo))
+
+	// Text estimate plus the per-tool_use framing the upstream bills.
+	assert.Equal(t, tokenkit.Estimate("claude-sonnet-5", `read_file{"path":"main.go"}`)+40, claudeInfo.Usage.CompletionTokens)
+	assert.Equal(t, 100, claudeInfo.Usage.PromptTokens)
 }
 
 func TestBuildOpenAIStyleUsageFromClaudeUsage(t *testing.T) {

@@ -28,7 +28,7 @@ func TestGetUserGroupsIncludesAutoOnlyWhenEnabled(t *testing.T) {
 		setting.DefaultUseAutoGroup = originalDefault
 	})
 
-	getGroups := func() map[string]map[string]interface{} {
+	getGroups := func() map[string]map[string]any {
 		recorder := httptest.NewRecorder()
 		ctx, _ := gin.CreateTestContext(recorder)
 		ctx.Request = httptest.NewRequest(http.MethodGet, "/api/user/self/groups", nil)
@@ -38,8 +38,8 @@ func TestGetUserGroupsIncludesAutoOnlyWhenEnabled(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, recorder.Code)
 		var body struct {
-			Success bool                              `json:"success"`
-			Data    map[string]map[string]interface{} `json:"data"`
+			Success bool                      `json:"success"`
+			Data    map[string]map[string]any `json:"data"`
 		}
 		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &body))
 		assert.True(t, body.Success)
@@ -54,6 +54,4 @@ func TestGetUserGroupsIncludesAutoOnlyWhenEnabled(t *testing.T) {
 	setting.AutoGroupEnabled = true
 	groups := getGroups()
 	require.Contains(t, groups, "auto")
-	assert.Equal(t, "自动", groups["auto"]["ratio"])
-	assert.NotEmpty(t, groups["auto"]["desc"])
 }

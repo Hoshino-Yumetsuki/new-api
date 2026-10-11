@@ -13,7 +13,6 @@ import (
 	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/gin-contrib/gzip"
-	"github.com/gin-contrib/static"
 	"github.com/gin-gonic/gin"
 )
 
@@ -25,7 +24,8 @@ type WebAssets struct {
 
 func SetWebRouter(router *gin.Engine, assets WebAssets, pluginDispatcher gin.HandlerFunc) {
 	frontendFS := common.EmbedFolder(assets.BuildFS, "web/dist")
-	serveStatic := static.Serve("/", frontendFS)
+	serveStatic := middleware.ServeFrontendFiles(frontendFS)
+	compress := gzip.Gzip(gzip.DefaultCompression)
 	type cachedPage struct {
 		title, description string
 		page               []byte
@@ -36,13 +36,18 @@ func SetWebRouter(router *gin.Engine, assets WebAssets, pluginDispatcher gin.Han
 	router.NoRoute(
 		pluginDispatcher,
 		middleware.RouteTag("web"),
-		gzip.Gzip(gzip.DefaultCompression),
+		func(c *gin.Context) {
+			// ServeFrontendFiles sends build files already compressed.
+			if c.Request.URL.Path == "/" || c.Request.URL.Path == "/index.html" || !frontendFS.Exists("/", c.Request.URL.Path) {
+				compress(c)
+			}
+		},
 		middleware.AccessTokenAudit(),
-		middleware.GlobalWebRateLimit(),
+		middleware.GlobalWebRateLimit(frontendFS),
 		middleware.Cache(),
 		func(c *gin.Context) {
 			// The embedded filesystem serves index.html directly, bypassing the
-			// live metadata; other assets still use static.Serve.
+			// live metadata; other assets still use ServeFrontendFiles.
 			if c.Request.URL.Path != "/" && c.Request.URL.Path != "/index.html" {
 				serveStatic(c)
 			}

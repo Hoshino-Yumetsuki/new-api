@@ -24,7 +24,7 @@ func verifyCapJsToken(token string) (bool, string) {
 	if common.BotProtectionUsesCapJs() {
 		parts := strings.Split(token, ":")
 		if len(parts) != 3 {
-			return false, "Cap.js 校验失败，请刷新重试！"
+			return false, "Cap.js verification failed, please refresh and try again!"
 		}
 		if parts[0] != common.BuiltinCapSiteKey {
 			return verifyCapJsTokenRemote(token)
@@ -34,7 +34,7 @@ func verifyCapJsToken(token string) (bool, string) {
 			return false, err.Error()
 		}
 		if !ok {
-			return false, "Cap.js 校验失败，请刷新重试！"
+			return false, "Cap.js verification failed, please refresh and try again!"
 		}
 		return true, ""
 	}
@@ -44,7 +44,7 @@ func verifyCapJsToken(token string) (bool, string) {
 func verifyCapJsTokenRemote(token string) (bool, string) {
 	endpoint := strings.TrimSpace(common.CapJsApiEndpoint)
 	if endpoint == "" {
-		return false, "Cap.js endpoint 未配置"
+		return false, "Cap.js endpoint is not configured"
 	}
 	endpoint = strings.TrimSuffix(endpoint, "/")
 	verifyURL := endpoint + "/siteverify"
@@ -80,7 +80,7 @@ func verifyCapJsTokenRemote(token string) (bool, string) {
 		return false, err.Error()
 	}
 	if !res.Success {
-		return false, "Cap.js 校验失败，请刷新重试！"
+		return false, "Cap.js verification failed, please refresh and try again!"
 	}
 	return true, ""
 }
@@ -106,7 +106,7 @@ func verifyTurnstileToken(token, clientIP string) (bool, string) {
 		return false, err.Error()
 	}
 	if !res.Success {
-		return false, "Turnstile 校验失败，请刷新重试！"
+		return false, "Turnstile verification failed, please refresh and try again!"
 	}
 	return true, ""
 }
@@ -120,10 +120,7 @@ func TurnstileCheck() gin.HandlerFunc {
 
 		token := c.Query("turnstile")
 		if token == "" {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "人机验证 token 为空",
-			})
+			common.ApiErrorT(c, "Human verification token is empty")
 			c.Abort()
 			return
 		}
@@ -139,10 +136,7 @@ func TurnstileCheck() gin.HandlerFunc {
 			if message != "" {
 				common.SysLog(message)
 			}
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": message,
-			})
+			common.ApiErrorT(c, message)
 			c.Abort()
 			return
 		}

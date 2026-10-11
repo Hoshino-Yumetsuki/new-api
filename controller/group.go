@@ -40,7 +40,7 @@ func GetUserGroups(c *gin.Context) {
 	}
 	if setting.AutoGroupEnabled {
 		usableGroups["auto"] = map[string]any{
-			"ratio": "自动",
+			"ratio": "auto",
 			"desc":  setting.GetUsableGroupDescription("auto"),
 		}
 	}

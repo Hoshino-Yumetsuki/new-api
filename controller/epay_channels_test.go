@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -280,6 +281,74 @@ func TestEpayChannelsDatabaseMatrix(t *testing.T) {
 				assert.False(t, topupInfo.Data.EnableOnlineTopup)
 				for _, method := range topupInfo.Data.PayMethods {
 					assert.NotContains(t, method["type"], "channel.")
+				}
+			})
+			t.Run("exact wallet credit and referral rewards", func(t *testing.T) {
+				db := epayChannelDatabase(t, dialect.kind, os.Getenv(dialect.env))
+				payment := operation_setting.GetPaymentSetting()
+				payment.AffCommissionEnabled = true
+				payment.AffCommissionType = operation_setting.AffCommissionTypePercentage
+				payment.AffCommissionRate = 5
+				inviter := model.User{Username: "commission-inviter", AffCode: "commission"}
+				require.NoError(t, db.Create(&inviter).Error)
+				user := model.User{Username: "large-wallet", AffCode: "wallet", InviterId: inviter.Id, Quota: 50_000_853_048_500_001}
+				require.NoError(t, db.Create(&user).Error)
+				order := model.TopUp{UserId: user.Id, Amount: 2, Money: 2, TradeNo: "matrix-exact-credit", Status: common.TopUpStatusPending}
+				require.NoError(t, order.SetEpayPaymentMethod("named.alipay"))
+				require.NoError(t, order.Insert())
+				for _, wantDone := range []bool{false, true} {
+					done, err := model.RechargeEpay(order.TradeNo, "named.bank", "127.0.0.1")
+					require.NoError(t, err)
+					assert.Equal(t, wantDone, done)
+				}
+				require.NoError(t, db.First(&user, user.Id).Error)
+				require.NoError(t, db.First(&inviter, inviter.Id).Error)
+				assert.Equal(t, 50_000_853_049_500_001, user.Quota)
+				assert.Equal(t, 50_000, inviter.AffQuota)
+				assert.Equal(t, 50_000, inviter.AffHistoryQuota)
+				var logs []model.Log
+				require.NoError(t, db.Order("id").Find(&logs).Error)
+				require.Len(t, logs, 2, "a replay must not duplicate payment or commission logs")
+				assert.Contains(t, logs[0].Other, "Online top-up succeeded, amount added: {{quota}}, payment amount: {{amount}}")
+				assert.Contains(t, logs[1].Other, "Referral top-up commission {{quota}}")
+				assert.Contains(t, logs[0].Other, "named.bank")
+			})
+			t.Run("invitation counts do not require payment compliance", func(t *testing.T) {
+				db := epayChannelDatabase(t, dialect.kind, os.Getenv(dialect.env))
+				oldNew, oldInvitee, oldInviter := common.QuotaForNewUser, common.QuotaForInvitee, common.QuotaForInviter
+				t.Cleanup(func() {
+					common.QuotaForNewUser, common.QuotaForInvitee, common.QuotaForInviter = oldNew, oldInvitee, oldInviter
+				})
+				common.QuotaForNewUser, common.QuotaForInvitee, common.QuotaForInviter = 0, 20, 30
+				inviter := model.User{Username: "count-inviter", AffCode: "counter"}
+				require.NoError(t, db.Create(&inviter).Error)
+				for _, confirmed := range []bool{false, true} {
+					operation_setting.GetPaymentSetting().ComplianceConfirmed = confirmed
+					for _, oauth := range []bool{false, true} {
+						user := model.User{Username: fmt.Sprintf("invite-%t-%t", confirmed, oauth), AffCode: fmt.Sprintf("%t-%t", confirmed, oauth), InviterId: inviter.Id}
+						require.NoError(t, db.Create(&user).Error)
+						if oauth {
+							user.FinalizeOAuthUserCreation(inviter.Id)
+						} else {
+							user.FinishInsert(inviter.Id)
+						}
+						require.NoError(t, db.First(&user, user.Id).Error)
+						wantQuota := 0
+						if confirmed {
+							wantQuota = 20
+						}
+						assert.Equal(t, wantQuota, user.Quota)
+					}
+					require.NoError(t, db.First(&inviter, inviter.Id).Error)
+					if confirmed {
+						assert.Equal(t, 4, inviter.AffCount)
+						assert.Equal(t, 60, inviter.AffQuota)
+						assert.Equal(t, 60, inviter.AffHistoryQuota)
+					} else {
+						assert.Equal(t, 2, inviter.AffCount)
+						assert.Zero(t, inviter.AffQuota)
+						assert.Zero(t, inviter.AffHistoryQuota)
+					}
 				}
 			})
 
