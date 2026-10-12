@@ -97,10 +97,16 @@ const OPERATIONS_SECTIONS = [
     titleKey: 'Log Maintenance',
     build: (settings: OperationsSettings) => (
       <LogSettingsSection
-        defaultEnabled={Boolean(settings.LogConsumeEnabled)}
-        defaultHideModelRedirectForNonAdmin={Boolean(
-          settings['general_setting.hide_model_redirect_for_non_admin']
-        )}
+        defaultValues={{
+          LogConsumeEnabled: Boolean(settings.LogConsumeEnabled),
+          'general_setting.hide_model_redirect_for_non_admin': Boolean(
+            settings['general_setting.hide_model_redirect_for_non_admin']
+          ),
+          'log_setting.user_export_enabled':
+            settings['log_setting.user_export_enabled'] ?? true,
+          'log_setting.max_range_days':
+            settings['log_setting.max_range_days'] ?? 365,
+        }}
       />
     ),
   },

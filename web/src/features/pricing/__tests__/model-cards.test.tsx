@@ -126,18 +126,28 @@ describe('model cards', () => {
     const model = pricingModel({
       billing_mode: 'tiered_expr',
       billing_expr:
-        'hour("Asia/Shanghai") >= 9 && hour("Asia/Shanghai") < 12 ? tier("peak", p * 3 + c * 9) : tier("off_peak", p * 1.5 + c * 4.5)',
+        'hour("Asia/Shanghai") >= 9 && hour("Asia/Shanghai") < 12 ? tier("peak", p * 3 + c * 9 + cr * 0.3) : tier("off_peak", p * 1.5 + c * 4.5 + cr * 0.15)',
     })
     render(<ModelCard model={model} onClick={vi.fn()} tokenUnit='M' />)
     expect(screen.getByText('Current period price')).toBeVisible()
     expect(screen.getByText('$1.5')).toBeVisible()
+    expect(screen.getByText('Cache Read').parentElement).toHaveTextContent(
+      /\$0.15\s*\/\s*1M/
+    )
+    expect(screen.queryByText('Cached')).not.toBeInTheDocument()
     act(() => vi.advanceTimersByTime(1000))
     expect(screen.getByText('$3')).toBeVisible()
+    expect(screen.getByText('Cache Read').parentElement).toHaveTextContent(
+      /\$0.3\s*\/\s*1M/
+    )
     act(() => {
       vi.setSystemTime(new Date('2026-09-07T12:00:00+08:00'))
       fireEvent(document, new Event('visibilitychange'))
     })
     expect(screen.getByText('$1.5')).toBeVisible()
+    expect(screen.getByText('Cache Read').parentElement).toHaveTextContent(
+      /\$0.15\s*\/\s*1M/
+    )
   })
 
   it('copies the complete long model name without opening details', async () => {
@@ -410,6 +420,69 @@ describe('model cards', () => {
     )
     expect(screen.getByText('Output').parentElement).toHaveTextContent(
       /\$0.0225\s*\/\s*1K/
+    )
+  })
+
+  it('shows the cached price of an expression model after its input and output prices without a duplicate cache read row', () => {
+    render(
+      <ModelCard
+        model={pricingModel({
+          billing_mode: 'tiered_expr',
+          billing_expr: 'tier("base", p * 0.15 + c * 0.6 + cr * 0.003)',
+        })}
+        onClick={vi.fn()}
+        tokenUnit='M'
+        selectedGroup='default'
+      />
+    )
+    expect(screen.getByText('Input').parentElement).toHaveTextContent(
+      /\$0.15\s*\/\s*1M/
+    )
+    expect(screen.getByText('Output').parentElement).toHaveTextContent(
+      /\$0.6\s*\/\s*1M/
+    )
+    expect(screen.getByText('Cached').parentElement).toHaveTextContent(
+      /\$0.003\s*\/\s*1M/
+    )
+    expect(screen.queryByText('Cache Read')).not.toBeInTheDocument()
+  })
+
+  it('shows the cache read price once when a plugin provider already lists it as a main price', () => {
+    render(
+      <ModelCard
+        model={pricingModel({
+          billing_plugin_variants: [
+            {
+              plugin_key: 'alpha',
+              plugin_name: 'Alpha',
+              billing_mode: 'tiered_expr',
+              billing_expr: 'tier("base", p * 1 + c * 2 + cr * 0.5)',
+              billing_usage_schema: {},
+            },
+          ],
+        })}
+        onClick={vi.fn()}
+        tokenUnit='M'
+        selectedGroup='default'
+      />
+    )
+    expect(screen.getAllByText('Cache Read')).toHaveLength(1)
+  })
+
+  it('shows the cached price of an expression model that prices nothing else', () => {
+    render(
+      <ModelCard
+        model={pricingModel({
+          billing_mode: 'tiered_expr',
+          billing_expr: 'tier("base", cr * 0.5)',
+        })}
+        onClick={vi.fn()}
+        tokenUnit='M'
+        selectedGroup='default'
+      />
+    )
+    expect(screen.getByText('Cached').parentElement).toHaveTextContent(
+      /\$0.5\s*\/\s*1M/
     )
   })
 

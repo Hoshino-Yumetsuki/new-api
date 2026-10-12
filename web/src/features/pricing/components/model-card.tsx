@@ -121,6 +121,11 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   }
   let priceSummary: ReactNode
   if (dynamicSummary) {
+    const cacheReadEntries = cardEntries.some((entry) => entry.key === 'cache')
+      ? []
+      : dynamicSummary.secondaryEntries.filter(
+          (entry) => entry.field === 'cacheReadPrice' && entry.unit === 'token'
+        )
     if (dynamicSummary.isSpecialExpression) {
       priceSummary = (
         <div className='col-span-full min-w-0'>
@@ -132,51 +137,55 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           </code>
         </div>
       )
-    } else if (cardEntries.length > 0) {
+    } else if (cardEntries.length > 0 || cacheReadEntries.length > 0) {
       priceSummary = (
         <>
-          {cardEntries
-            .slice(0, dynamicSummary.providerCount ? 2 : undefined)
-            .map((entry) => {
-              const unitLabelKey = getDynamicPriceUnitLabelKey(entry)
-              const unitLabel = taskUsageUnitLabel(
-                entry,
-                i18n.language,
-                unitLabelKey ? t(unitLabelKey) : tokenUnitLabel
+          {[
+            ...cardEntries.slice(
+              0,
+              dynamicSummary.providerCount ? 2 : undefined
+            ),
+            ...cacheReadEntries,
+          ].map((entry) => {
+            const unitLabelKey = getDynamicPriceUnitLabelKey(entry)
+            const unitLabel = taskUsageUnitLabel(
+              entry,
+              i18n.language,
+              unitLabelKey ? t(unitLabelKey) : tokenUnitLabel
+            )
+            let label: ReactNode = null
+            if (entry.labelKind !== 'schema') {
+              label = t(entry.shortLabel)
+            } else {
+              label = taskPriceLabel(
+                entry.description,
+                entry.shortLabel,
+                i18n.language
               )
-              let label: ReactNode = null
-              if (entry.labelKind !== 'schema') {
-                label = t(entry.shortLabel)
-              } else {
-                label = taskPriceLabel(
-                  entry.description,
-                  entry.shortLabel,
-                  i18n.language
-                )
-              }
-              return (
-                <div
-                  key={entry.key}
-                  className={cn(
-                    'flex min-w-0 flex-col gap-1',
-                    dynamicSummary.isTaskUsage && 'col-span-full'
-                  )}
-                >
-                  {label && (
-                    <span className='text-muted-foreground text-xs break-words whitespace-normal'>
-                      {label}
-                    </span>
-                  )}
-                  <span className='flex flex-wrap items-baseline gap-x-1 font-mono text-sm font-semibold tabular-nums'>
-                    <span>{entry.formattedRange ?? entry.formatted}</span>
-                    <span className='text-muted-foreground text-xs font-normal whitespace-nowrap'>
-                      {' '}
-                      / {unitLabel}
-                    </span>
+            }
+            return (
+              <div
+                key={entry.key}
+                className={cn(
+                  'flex min-w-0 flex-col gap-1',
+                  dynamicSummary.isTaskUsage && 'col-span-full'
+                )}
+              >
+                {label && (
+                  <span className='text-muted-foreground text-xs break-words whitespace-normal'>
+                    {label}
                   </span>
-                </div>
-              )
-            })}
+                )}
+                <span className='flex flex-wrap items-baseline gap-x-1 font-mono text-sm font-semibold tabular-nums'>
+                  <span>{entry.formattedRange ?? entry.formatted}</span>
+                  <span className='text-muted-foreground text-xs font-normal whitespace-nowrap'>
+                    {' '}
+                    / {unitLabel}
+                  </span>
+                </span>
+              </div>
+            )
+          })}
           {dynamicSummary.isTimePricing && (
             <span className='text-muted-foreground col-span-full text-xs'>
               {t('Current period price')}

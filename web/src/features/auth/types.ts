@@ -184,6 +184,8 @@ export interface SystemStatus {
   custom_oauth_providers?: CustomOAuthProviderInfo[]
   auto_group_enabled?: boolean
   default_use_auto_group?: boolean
+  log_export_enabled?: boolean
+  log_max_range_days?: number
   [key: string]: unknown
 }
 

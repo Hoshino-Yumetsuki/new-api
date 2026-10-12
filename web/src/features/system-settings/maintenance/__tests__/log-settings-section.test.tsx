@@ -53,8 +53,12 @@ describe('log settings save', () => {
     render(
       <SettingsPageProvider actionsContainer={actionsContainer}>
         <LogSettingsSection
-          defaultEnabled={false}
-          defaultHideModelRedirectForNonAdmin={false}
+          defaultValues={{
+            LogConsumeEnabled: false,
+            'general_setting.hide_model_redirect_for_non_admin': false,
+            'log_setting.user_export_enabled': true,
+            'log_setting.max_range_days': 365,
+          }}
         />
       </SettingsPageProvider>
     )
@@ -71,7 +75,56 @@ describe('log settings save', () => {
         value: true,
       })
     })
+    expect(mutateAsync).toHaveBeenCalledTimes(1)
 
     actionsContainer.remove()
+  })
+
+  test('refreshing defaults resets all log settings controls', async () => {
+    const view = render(
+      <SettingsPageProvider actionsContainer={null}>
+        <LogSettingsSection
+          defaultValues={{
+            LogConsumeEnabled: false,
+            'general_setting.hide_model_redirect_for_non_admin': false,
+            'log_setting.user_export_enabled': true,
+            'log_setting.max_range_days': 365,
+          }}
+        />
+      </SettingsPageProvider>
+    )
+
+    view.rerender(
+      <SettingsPageProvider actionsContainer={null}>
+        <LogSettingsSection
+          defaultValues={{
+            LogConsumeEnabled: true,
+            'general_setting.hide_model_redirect_for_non_admin': true,
+            'log_setting.user_export_enabled': false,
+            'log_setting.max_range_days': 30,
+          }}
+        />
+      </SettingsPageProvider>
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('switch', { name: 'Record quota usage' })
+      ).toBeChecked()
+      expect(
+        screen.getByRole('switch', {
+          name: 'Hide model redirect from non-admin users',
+        })
+      ).toBeChecked()
+      expect(
+        screen.getByRole('switch', { name: 'Allow users to export logs' })
+      ).not.toBeChecked()
+      expect(
+        screen.getByRole('spinbutton', {
+          name: 'Longest log time range (days)',
+        })
+      ).toHaveValue(30)
+    })
+    expect(mutateAsync).not.toHaveBeenCalled()
   })
 })
