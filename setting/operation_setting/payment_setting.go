@@ -37,9 +37,10 @@ const CurrentComplianceTermsVersion = "v1"
 
 // 默认配置
 var paymentSetting = PaymentSetting{
-	EpayChannels:   []EpayChannel{},
-	AmountOptions:  []int{10, 20, 50, 100, 200, 500},
-	AmountDiscount: map[int]float64{},
+	EpayChannels:      []EpayChannel{},
+	AmountOptions:     []int{10, 20, 50, 100, 200, 500},
+	AmountDiscount:    map[int]float64{},
+	AffCommissionType: AffCommissionTypePercentage,
 }
 
 func init() {
@@ -57,8 +58,13 @@ func IsPaymentComplianceConfirmed() bool {
 }
 
 func GetAffCommissionSetting() (enabled bool, commType string, rate float64, fixedAmount int) {
+	commType = paymentSetting.AffCommissionType
+	// Older configurations may omit the type or persist an empty value while the UI displays percentage.
+	if commType == "" {
+		commType = AffCommissionTypePercentage
+	}
 	return paymentSetting.AffCommissionEnabled,
-		paymentSetting.AffCommissionType,
+		commType,
 		paymentSetting.AffCommissionRate,
 		paymentSetting.AffCommissionFixedAmount
 }
