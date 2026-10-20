@@ -801,6 +801,7 @@ func (user *User) InsertWithTx(tx *gorm.DB, inviterId int) error {
 			return err
 		}
 		user.Quota = common.QuotaForNewUser
+		user.InviterId = inviterId
 		user.AffCode = common.GetRandomString(4)
 
 		// 初始化用户设置
