@@ -202,6 +202,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
             </span>
           )}
           {dynamicSummary.isTaskUsage &&
+            dynamicSummary.tierCount > 1 &&
             dynamicSummary.tier?.label &&
             !cardEntries.some((entry) => entry.formattedRange) && (
               <span className='text-muted-foreground col-span-full text-xs break-words'>

@@ -14,28 +14,23 @@
     />
 
     <meta name="theme-color" content="#fff" />
+    <!-- Resolve the theme before first paint so the page never flashes light
+         and one-shot detectors (e.g. Dark Reader) see the real theme.
+         Keep in sync with ThemeProvider and THEME_STORAGE_KEYS.mode. -->
     <script>
-      (() => {
+      ;(function () {
+        var theme = 'system'
         try {
-          const storedTheme = document.cookie.match(
-            /(?:^|;\s*)vite-ui-theme=([^;]*)/
-          )?.[1]
-          const theme = ['dark', 'light', 'system'].includes(storedTheme ?? '')
-            ? storedTheme
-            : 'system'
-          const resolvedTheme =
-            theme === 'system'
-              ? window.matchMedia('(prefers-color-scheme: dark)').matches
-                ? 'dark'
-                : 'light'
-              : theme
-          document.documentElement.classList.add(resolvedTheme)
-        } catch {
-          document.documentElement.classList.add('light')
+          theme = localStorage.getItem('newapi:theme:v1:mode') || 'system'
+        } catch (e) {}
+        if (theme !== 'dark' && theme !== 'light') {
+          theme = window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light'
         }
+        document.documentElement.classList.add(theme)
       })()
     </script>
-
     <!--umami-->
     <!--Google Analytics-->
   </head>
