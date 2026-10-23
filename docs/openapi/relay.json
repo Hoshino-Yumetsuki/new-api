@@ -289,7 +289,7 @@
 	      "post": {
 	        "summary": "压缩对话 (OpenAI Responses API)",
 	        "deprecated": false,
-	        "description": "OpenAI Responses API，用于对长对话进行 compaction。",
+	        "description": "OpenAI Responses API，用于对长对话进行 compaction。非原样透传模式下，会过滤 input 数组中压缩端点不支持的 configuration_update 控制项，保留其他历史项的内容和顺序。常规 /v1/responses 请求不受影响。",
 	        "operationId": "compactResponse",
         "tags": [
           "OpenAI格式(Responses)"
