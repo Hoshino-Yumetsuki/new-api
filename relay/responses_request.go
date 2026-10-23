@@ -1,9 +1,11 @@
 package relay
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/logger"
@@ -15,6 +17,7 @@ import (
 	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/QuantumNous/new-api/setting/model_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 )
 
 // PrepareResponsesRequest applies the same model, conversion and channel rules
@@ -56,6 +59,22 @@ func PrepareResponsesRequest(c *gin.Context, info *relaycommon.RelayInfo, req *d
 		}
 		body := common.NewReplayableBodyReader(storage)
 		return adaptor, body, io.NopCloser(body), nil
+	}
+
+	// Compaction does not support durable reasoning configuration updates.
+	// Filter only the channel-attempt copy; normal Responses replay keeps them.
+	if info.RelayMode == relayconstant.RelayModeResponsesCompact && gjson.GetBytes(request.Input, `#(type=="configuration_update")`).Exists() {
+		var input []json.RawMessage
+		if err := common.Unmarshal(request.Input, &input); err != nil {
+			return nil, nil, nil, newConvertRequestFailedError(c, info, err)
+		}
+		input = slices.DeleteFunc(input, func(item json.RawMessage) bool {
+			return gjson.GetBytes(item, "type").Str == "configuration_update"
+		})
+		request.Input, err = common.Marshal(input)
+		if err != nil {
+			return nil, nil, nil, newConvertRequestFailedError(c, info, err)
+		}
 	}
 
 	convertedRequest, err := adaptor.ConvertOpenAIResponsesRequest(c, info, *request)
