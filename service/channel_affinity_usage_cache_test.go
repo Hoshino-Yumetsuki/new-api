@@ -1,7 +1,9 @@
 package service
 
 import (
+	"fmt"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -10,11 +12,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+var channelAffinityTestSeq atomic.Int64
+
 func buildChannelAffinityStatsContextForTest(t *testing.T) (*gin.Context, string, string, string) {
 	t.Helper()
-	ruleName := "rule_" + t.Name()
+	key := fmt.Sprintf("%s:%d", t.Name(), channelAffinityTestSeq.Add(1))
+	ruleName := "rule_" + key
 	usingGroup := "default"
-	keyFP := "fp_" + t.Name()
+	keyFP := "fp_" + key
 	cacheKey := channelAffinityUsageCacheEntryKey(ruleName, usingGroup, keyFP)
 	cache := getChannelAffinityUsageCacheStatsCache()
 	_, err := cache.DeleteMany([]string{cacheKey})
@@ -23,7 +28,6 @@ func buildChannelAffinityStatsContextForTest(t *testing.T) (*gin.Context, string
 		_, err := cache.DeleteMany([]string{cacheKey})
 		require.NoError(t, err)
 	})
-
 	rec := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(rec)
 	setChannelAffinityContext(ctx, channelAffinityMeta{
