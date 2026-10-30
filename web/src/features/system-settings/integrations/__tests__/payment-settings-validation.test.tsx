@@ -24,7 +24,9 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react'
-import { afterEach, describe, expect, test } from 'vitest'
+import { afterEach, describe, expect, test, vi } from 'vitest'
+
+import { api } from '@/lib/api'
 
 import { SettingsPageProvider } from '../../components/settings-page-context'
 import { PaymentSettingsSection } from '../payment-settings-section'
@@ -34,11 +36,31 @@ let actionsContainer: HTMLDivElement
 afterEach(() => {
   cleanup()
   actionsContainer?.remove()
+  vi.restoreAllMocks()
 })
 
-function renderSettings(name: string) {
+function renderSettings(
+  name: string,
+  useMAPI = false,
+  extraChannels: Array<{ name: string; use_mapi?: boolean }> = []
+) {
   actionsContainer = document.createElement('div')
   document.body.append(actionsContainer)
+  const channels = [
+    {
+      name,
+      pay_address: 'https://pay.example.com',
+      epay_id: '10001',
+      epay_key: '',
+      ...(useMAPI ? { use_mapi: true } : {}),
+    },
+    ...extraChannels.map((channel) => ({
+      pay_address: 'https://pay.example.com',
+      epay_id: '10001',
+      epay_key: '',
+      ...channel,
+    })),
+  ]
   render(
     <QueryClientProvider
       client={
@@ -53,14 +75,7 @@ function renderSettings(name: string) {
       <SettingsPageProvider actionsContainer={actionsContainer}>
         <PaymentSettingsSection
           defaultValues={{
-            EpayChannels: JSON.stringify([
-              {
-                name,
-                pay_address: 'https://pay.example.com',
-                epay_id: '10001',
-                epay_key: '',
-              },
-            ]),
+            EpayChannels: JSON.stringify(channels),
             Price: 7.3,
             MinTopUp: 1,
             CustomCallbackAddress: '',
@@ -159,5 +174,74 @@ describe('payment settings validation visibility', () => {
     ).toHaveAccessibleDescription(
       /New or renamed Epay channels require a secret key\./
     )
+  })
+
+  test('saves each channel mapi toggle and reloads its checked state', async () => {
+    const put = vi.spyOn(api, 'put').mockResolvedValue({
+      data: { success: true },
+    })
+    renderSettings('Alpha', false, [{ name: 'Beta', use_mapi: true }])
+    fireEvent.click(screen.getByRole('tab', { name: 'Epay' }))
+
+    const switches = screen.getAllByRole('switch', { name: 'Use mapi cashier' })
+    expect(switches[0]).not.toBeChecked()
+    expect(switches[1]).toBeChecked()
+    fireEvent.click(switches[0])
+    expect(switches[0]).toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: 'Save all settings' }))
+
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(1))
+    expect(put).toHaveBeenNthCalledWith(1, '/api/option/', {
+      key: 'payment_setting.epay_channels',
+      value: JSON.stringify([
+        {
+          name: 'Alpha',
+          pay_address: 'https://pay.example.com',
+          epay_id: '10001',
+          epay_key: '',
+          use_mapi: true,
+        },
+        {
+          name: 'Beta',
+          pay_address: 'https://pay.example.com',
+          epay_id: '10001',
+          epay_key: '',
+          use_mapi: true,
+        },
+      ]),
+    })
+
+    cleanup()
+    actionsContainer?.remove()
+    renderSettings('Alpha', true, [{ name: 'Beta', use_mapi: true }])
+    fireEvent.click(screen.getByRole('tab', { name: 'Epay' }))
+    const reloadedSwitches = screen.getAllByRole('switch', {
+      name: 'Use mapi cashier',
+    })
+    expect(reloadedSwitches[0]).toBeChecked()
+    fireEvent.click(reloadedSwitches[0])
+    expect(reloadedSwitches[0]).not.toBeChecked()
+    fireEvent.click(screen.getByRole('button', { name: 'Save all settings' }))
+
+    await waitFor(() => expect(put).toHaveBeenCalledTimes(2))
+    expect(put).toHaveBeenNthCalledWith(2, '/api/option/', {
+      key: 'payment_setting.epay_channels',
+      value: JSON.stringify([
+        {
+          name: 'Alpha',
+          pay_address: 'https://pay.example.com',
+          epay_id: '10001',
+          epay_key: '',
+          use_mapi: false,
+        },
+        {
+          name: 'Beta',
+          pay_address: 'https://pay.example.com',
+          epay_id: '10001',
+          epay_key: '',
+          use_mapi: true,
+        },
+      ]),
+    })
   })
 })

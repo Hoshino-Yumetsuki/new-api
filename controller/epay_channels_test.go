@@ -120,6 +120,8 @@ func TestEpayChannelsDatabaseMatrix(t *testing.T) {
 					`null`, `{}`, `[`,
 					`[{"name":"newchannel","pay_address":"https://c.example.com","epay_id":"1003","epay_key":""}]`,
 					`[{"name":"achannel","pay_address":"https://a.example.com","epay_id":"1001","epay_key":""},{"name":"achannel","pay_address":"https://b.example.com","epay_id":"1002","epay_key":"key-for-b"}]`,
+					`[{"name":"achannel","pay_address":"https://a.example.com","epay_id":"1001","epay_key":"","use_mapi":"true"}]`,
+					`[{"name":"achannel","pay_address":"https://a.example.com","epay_id":"1001","epay_key":"","use_mapi":null}]`,
 				} {
 					response := epayChannelRequest(t, UpdateOption, OptionUpdateRequest{Key: "payment_setting.epay_channels", Value: invalid})
 					assert.Contains(t, response.Body.String(), `"success":false`, invalid)
@@ -598,6 +600,175 @@ func TestEpayChannelsDatabaseMatrix(t *testing.T) {
 				require.NoError(t, err)
 				assert.Equal(t, "retained-key", channel.EpayKey)
 			})
+		})
+	}
+}
+
+func TestEpayMAPICheckoutDatabaseMatrix(t *testing.T) {
+	for _, dialect := range []struct{ kind, env string }{{"sqlite", ""}, {"mysql", "TEST_MYSQL_DSN"}, {"postgres", "TEST_POSTGRES_DSN"}} {
+		t.Run(dialect.kind, func(t *testing.T) {
+			if dialect.env != "" && os.Getenv(dialect.env) == "" {
+				t.Skip("set " + dialect.env + " to exercise this database")
+			}
+			db := epayChannelDatabase(t, dialect.kind, os.Getenv(dialect.env))
+			require.NoError(t, db.Create(&model.User{Id: 1, Username: "mapi-user", Group: "default", Status: common.UserStatusEnabled}).Error)
+			plan := model.SubscriptionPlan{Title: "MAPI plan", PriceAmount: 2, Currency: "USD", DurationUnit: "month", DurationValue: 1, Enabled: true, TotalAmount: 1000}
+			require.NoError(t, db.Create(&plan).Error)
+			model.InvalidateSubscriptionPlanCache(plan.Id)
+			t.Cleanup(func() { model.InvalidateSubscriptionPlanCache(plan.Id) })
+			for _, tc := range []struct {
+				name, method string
+				enabled      bool
+				failure      bool
+			}{
+				{name: "legacy disabled", method: "default.wxpay"},
+				{name: "legacy enabled", method: "default.wxpay", enabled: true},
+				{name: "named disabled", method: "hosted.wxpay"},
+				{name: "named WeChat enabled", method: "hosted.wxpay", enabled: true},
+				{name: "named Alipay enabled", method: "hosted.alipay", enabled: true},
+				{name: "other channel unaffected", method: "standard.alipay", enabled: true},
+				{name: "gateway rejects order", method: "hosted.wxpay", enabled: true, failure: true},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					for _, subscription := range []bool{false, true} {
+						requests := make(chan map[string]string, 1)
+						upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+							assert.Equal(t, http.MethodPost, r.Method)
+							assert.Equal(t, "/gateway/mapi.php", r.URL.Path)
+							if !assert.NoError(t, r.ParseForm()) {
+								return
+							}
+							params := make(map[string]string, len(r.PostForm))
+							for name := range r.PostForm {
+								params[name] = r.PostForm.Get(name)
+							}
+							// A fast notify must never arrive before the local order exists.
+							if subscription {
+								assert.NotNil(t, model.GetSubscriptionOrderByTradeNo(params["out_trade_no"]))
+							} else {
+								assert.NotNil(t, model.GetTopUpByTradeNo(params["out_trade_no"]))
+							}
+							requests <- params
+							w.Header().Set("Content-Type", "application/json")
+							if tc.failure {
+								_, _ = w.Write([]byte(`{"code":0,"msg":"rejected"}`))
+								return
+							}
+							_, _ = w.Write([]byte(`{"code":1,"qrcode":"https://cashier.example.com/pay?order=123&from=mapi","payurl":"https://unused.example.com"}`))
+						}))
+						channels := []operation_setting.EpayChannel{
+							{Name: "default", PayAddress: upstream.URL + "/gateway", EpayId: "9001", EpayKey: "mapi-key", UseMAPI: tc.enabled},
+							{Name: "hosted", PayAddress: upstream.URL + "/gateway", EpayId: "9001", EpayKey: "mapi-key", UseMAPI: tc.enabled},
+							{Name: "standard", PayAddress: upstream.URL + "/gateway", EpayId: "9001", EpayKey: "mapi-key"},
+						}
+						encoded, err := common.Marshal(channels)
+						require.NoError(t, err)
+						require.NoError(t, model.UpdateOption(operation_setting.EpayChannelsOptionKey, string(encoded)))
+						require.NoError(t, model.UpdateOption("PayMethods", `[{"type":"default.wxpay"},{"type":"hosted.wxpay"},{"type":"hosted.alipay"},{"type":"standard.alipay"}]`))
+						model.InitOptionMap()
+						model.InitOptionMap()
+						handler, notify := RequestEpay, EpayNotify
+						body := map[string]any{"amount": 2, "payment_method": tc.method}
+						if subscription {
+							handler, notify = SubscriptionRequestEpay, SubscriptionEpayNotify
+							body["plan_id"] = plan.Id
+						}
+						response := epayChannelRequest(t, handler, body)
+						upstream.Close()
+						var payment struct {
+							Message  string
+							URL      string
+							Redirect bool
+							Data     common.RawMessage
+						}
+						require.NoError(t, common.Unmarshal(response.Body.Bytes(), &payment))
+						if !tc.enabled || strings.HasPrefix(tc.method, "standard.") {
+							require.Equal(t, "success", payment.Message, response.Body.String())
+							assert.Equal(t, upstream.URL+"/gateway/submit.php", payment.URL)
+							assert.False(t, payment.Redirect)
+							select {
+							case <-requests:
+								t.Fatal("standard checkout must not contact mapi")
+							default:
+							}
+							continue
+						}
+						var params map[string]string
+						select {
+						case params = <-requests:
+						default:
+							t.Fatal("hosted checkout did not contact mapi")
+						}
+						_, upstreamType, _ := strings.Cut(tc.method, ".")
+						assert.Equal(t, upstreamType, params["type"])
+						assert.Equal(t, "9001", params["pid"])
+						assert.Equal(t, "2.00", params["money"])
+						assert.Equal(t, "192.0.2.1", params["clientip"])
+						assert.NotEmpty(t, params["return_url"])
+						assert.Contains(t, params["notify_url"], "/epay/notify")
+						verified, err := GetEpayClient(tc.method).Verify(params)
+						require.NoError(t, err)
+						assert.True(t, verified.VerifyStatus, "clientip must be included in the signature")
+						if tc.failure {
+							assert.NotEqual(t, "success", payment.Message)
+							assert.Empty(t, payment.URL)
+							assert.False(t, payment.Redirect)
+							if subscription {
+								assert.Equal(t, common.TopUpStatusPending, model.GetSubscriptionOrderByTradeNo(params["out_trade_no"]).Status)
+							} else {
+								assert.Equal(t, common.TopUpStatusPending, model.GetTopUpByTradeNo(params["out_trade_no"]).Status)
+							}
+							continue
+						}
+						require.Equal(t, "success", payment.Message, response.Body.String())
+						assert.True(t, payment.Redirect)
+						assert.Equal(t, "https://cashier.example.com/pay?order=123&from=mapi", payment.URL)
+						assert.JSONEq(t, `{}`, string(payment.Data), "do not send form parameters to the cashier")
+						for range 2 {
+							callback := epayChannelCallback(t, notify, http.MethodPost, params["out_trade_no"], "9001", "2.00", upstreamType, "mapi-key")
+							assert.Equal(t, "success", callback.Body.String())
+						}
+						if subscription {
+							assert.Equal(t, common.TopUpStatusSuccess, model.GetSubscriptionOrderByTradeNo(params["out_trade_no"]).Status)
+						} else {
+							assert.Equal(t, common.TopUpStatusSuccess, model.GetTopUpByTradeNo(params["out_trade_no"]).Status)
+						}
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestEpayMAPIRejectsInvalidCheckout(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		status     int
+	}{
+		{"HTTP error", `{"code":1,"qrcode":"https://cashier.example.com"}`, http.StatusBadGateway},
+		{"HTTP redirect", ``, http.StatusFound},
+		{"invalid JSON", `<html>unavailable</html>`, http.StatusOK},
+		{"gateway failure", `{"code":0,"msg":"disabled"}`, http.StatusOK},
+		{"missing qrcode", `{"code":1,"payurl":"https://cashier.example.com"}`, http.StatusOK},
+		{"script URL", `{"code":1,"qrcode":"javascript:alert(1)"}`, http.StatusOK},
+		{"QR content instead of cashier", `{"code":1,"qrcode":"weixin://wxpay/bizpayurl?pr=123"}`, http.StatusOK},
+		{"relative URL", `{"code":1,"qrcode":"//cashier.example.com/pay"}`, http.StatusOK},
+		{"URL credentials", `{"code":1,"qrcode":"https://user:pass@cashier.example.com"}`, http.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Location", "https://must-not-follow.example.com")
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer upstream.Close()
+			client, err := epay.NewClient(&epay.Config{PartnerID: "9001", Key: "mapi-key"}, upstream.URL)
+			require.NoError(t, err)
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+			cashier, err := requestEpayMAPI(ctx, client, map[string]string{"pid": "9001", "type": "wxpay"})
+			require.Error(t, err)
+			assert.Empty(t, cashier)
 		})
 	}
 }
