@@ -23,6 +23,7 @@ const epayChannelSchema = z.object({
   pay_address: z.string(),
   epay_id: z.string(),
   epay_key: z.string(),
+  use_mapi: z.boolean().optional(),
 })
 
 export type EpayChannel = z.infer<typeof epayChannelSchema>

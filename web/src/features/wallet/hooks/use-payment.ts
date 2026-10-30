@@ -138,10 +138,15 @@ export function usePayment() {
           return true
         }
 
-        // Handle non-Stripe payment
-        if (!isStripe && response.data) {
-          const url = (response as unknown as { url?: string }).url
-          if (url) {
+        // Hosted cashiers provide a direct URL instead of form params.
+        if (!isStripe) {
+          const url = 'url' in response ? response.url : undefined
+          if (url && 'redirect' in response && response.redirect === true) {
+            window.location.href = url
+            return true
+          }
+
+          if (url && response.data) {
             submitPaymentForm(url, response.data)
             toast.success(i18next.t('Redirecting to payment page...'))
             return true

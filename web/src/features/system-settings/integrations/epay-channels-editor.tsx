@@ -24,6 +24,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
+import { SettingsSwitchField } from '../components/settings-form-layout'
 import { parseEpayChannels, type EpayChannel } from './epay-channels'
 
 type EpayChannelsEditorProps = {
@@ -51,11 +52,11 @@ export function EpayChannelsEditor(props: EpayChannelsEditorProps) {
     setRowState({ value, ids })
     props.onChange(value)
   }
-  const updateChannel = (
+  function updateChannel<K extends keyof EpayChannel>(
     index: number,
-    field: keyof EpayChannel,
-    value: string
-  ) => {
+    field: K,
+    value: EpayChannel[K]
+  ) {
     updateRows(
       channels.map((channel, row) =>
         row === index ? { ...channel, [field]: value } : channel
@@ -141,6 +142,19 @@ export function EpayChannelsEditor(props: EpayChannelsEditorProps) {
               />
             </div>
           </div>
+          <SettingsSwitchField
+            controlId={`${id}-${index}-use-mapi`}
+            checked={channel.use_mapi ?? false}
+            onCheckedChange={(checked) =>
+              updateChannel(index, 'use_mapi', checked)
+            }
+            label={t('Use mapi cashier')}
+            description={t(
+              'Enable mapi cashier for all payment types on this channel; top-up and subscription requests navigate directly to the returned qrcode cashier URL. Disable to keep the standard flow.'
+            )}
+            disabled={props.disabled}
+          />
+
           <Button
             type='button'
             variant='outline'
@@ -178,7 +192,13 @@ export function EpayChannelsEditor(props: EpayChannelsEditorProps) {
           updateRows(
             [
               ...channels,
-              { name: '', pay_address: '', epay_id: '', epay_key: '' },
+              {
+                name: '',
+                pay_address: '',
+                epay_id: '',
+                epay_key: '',
+                use_mapi: false,
+              },
             ],
             [...rows.ids, nanoid()]
           )

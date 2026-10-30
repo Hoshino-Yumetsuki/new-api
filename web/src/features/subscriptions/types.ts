@@ -111,6 +111,7 @@ export interface SubscriptionPayResponse {
     token_expires_at?: number | string
   }
   url?: string
+  redirect?: boolean
 }
 
 export interface CreateUserSubscriptionRequest {

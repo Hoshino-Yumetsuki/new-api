@@ -411,6 +411,17 @@ func RequestEpay(c *gin.Context) {
 		paymentError(c, common.NewMessage("Failed to create order"))
 		return
 	}
+	if channel.UseMAPI {
+		// Persist before contacting mapi so an immediate payment notification can find the order.
+		cashierURL, err := requestEpayMAPI(c, client, params)
+		if err != nil {
+			// A failed response does not prove the gateway rejected the order; allow a later notify.
+			paymentError(c, common.NewMessage("Failed to start payment"))
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "success", "data": gin.H{}, "url": cashierURL, "redirect": true})
+		return
+	}
 	logger.LogInfo(c.Request.Context(), common.LogText("Epay top-up order created user_id=%d trade_no=%s payment_method=%s amount=%d money=%.2f uri=%q params=%q", id, tradeNo, req.PaymentMethod, req.Amount, payMoney, uri, common.GetJsonString(params)))
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri})
 }

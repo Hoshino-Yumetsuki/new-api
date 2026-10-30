@@ -81,6 +81,7 @@ type EpayChannel struct {
 	PayAddress string `json:"pay_address"`
 	EpayId     string `json:"epay_id"`
 	EpayKey    string `json:"epay_key"`
+	UseMAPI    bool   `json:"use_mapi,omitempty"`
 }
 
 // ComposeEpayOptions builds the modern view without changing legacy storage.
@@ -96,7 +97,7 @@ func ComposeEpayOptions(values map[string]string) ([]EpayChannel, []map[string]s
 			return nil, nil, errors.New("default Epay credentials must use PayAddress, EpayId and EpayKey")
 		}
 	}
-	legacy := EpayChannel{Name: "default", PayAddress: values["PayAddress"], EpayId: values["EpayId"], EpayKey: values["EpayKey"]}
+	legacy := EpayChannel{Name: "default", PayAddress: values["PayAddress"], EpayId: values["EpayId"], EpayKey: values["EpayKey"], UseMAPI: values["EpayUseMAPI"] == "true"}
 	if legacy.PayAddress != "" || legacy.EpayId != "" || legacy.EpayKey != "" {
 		channels = append([]EpayChannel{legacy}, channels...)
 	}
@@ -185,17 +186,29 @@ func (channel EpayChannel) Validate() error {
 
 // ParseEpayChannels preserves an omitted secret only for an identically named channel.
 func ParseEpayChannels(value string, previous []EpayChannel) ([]EpayChannel, error) {
-	var payload []map[string]*string
+	var payload []map[string]any
 	if err := common.UnmarshalJsonStr(value, &payload); err != nil || payload == nil {
 		return nil, errors.New("Epay channels must be a JSON array")
 	}
 	channels := make([]EpayChannel, 0, len(payload))
 	seen := make(map[string]bool, len(payload))
 	for _, fields := range payload {
-		if len(fields) != 4 || fields["name"] == nil || fields["pay_address"] == nil || fields["epay_id"] == nil || fields["epay_key"] == nil {
+		name, nameOK := fields["name"].(string)
+		address, addressOK := fields["pay_address"].(string)
+		id, idOK := fields["epay_id"].(string)
+		key, keyOK := fields["epay_key"].(string)
+		useMAPI, hasMAPI := fields["use_mapi"]
+		if !nameOK || !addressOK || !idOK || !keyOK || len(fields) > 5 || (len(fields) == 5 && !hasMAPI) {
 			return nil, errors.New("each Epay channel requires name, pay_address, epay_id and epay_key strings")
 		}
-		channel := EpayChannel{Name: *fields["name"], PayAddress: *fields["pay_address"], EpayId: *fields["epay_id"], EpayKey: *fields["epay_key"]}
+		channel := EpayChannel{Name: name, PayAddress: address, EpayId: id, EpayKey: key}
+		if hasMAPI {
+			var ok bool
+			channel.UseMAPI, ok = useMAPI.(bool)
+			if !ok {
+				return nil, errors.New("Epay channel use_mapi must be a boolean")
+			}
+		}
 		if seen[channel.Name] {
 			return nil, fmt.Errorf("duplicate Epay channel name: %s", channel.Name)
 		}

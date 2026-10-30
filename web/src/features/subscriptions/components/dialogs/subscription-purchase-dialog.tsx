@@ -174,6 +174,11 @@ export function SubscriptionPurchaseDialog(props: Props) {
         payment_method: selectedEpayMethod,
       })
       if (res.message === 'success' && res.url) {
+        if (res.redirect === true) {
+          window.location.href = res.url
+          return
+        }
+
         const form = document.createElement('form')
         form.action = res.url
         form.method = 'POST'

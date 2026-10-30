@@ -120,6 +120,16 @@ func SubscriptionRequestEpay(c *gin.Context) {
 		common.ApiErrorT(c, "Failed to start payment")
 		return
 	}
+	if channel.UseMAPI {
+		cashierURL, err := requestEpayMAPI(c, client, params)
+		if err != nil {
+			// A failed response does not prove the gateway rejected the order; allow a later notify.
+			common.ApiErrorT(c, "Failed to start payment")
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"message": "success", "data": gin.H{}, "url": cashierURL, "redirect": true})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{"message": "success", "data": params, "url": uri})
 }
 

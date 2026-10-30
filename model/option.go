@@ -856,7 +856,7 @@ func handleConfigUpdate(key, value string) bool {
 
 func isEpayOption(key string) bool {
 	switch key {
-	case "PayAddress", "EpayId", "EpayKey", "PayMethods", operation_setting.EpayChannelsOptionKey, operation_setting.EpayChannelsStorageKey, operation_setting.EpayPayMethodsOptionKey:
+	case "PayAddress", "EpayId", "EpayKey", "EpayUseMAPI", "PayMethods", operation_setting.EpayChannelsOptionKey, operation_setting.EpayChannelsStorageKey, operation_setting.EpayPayMethodsOptionKey:
 		return true
 	}
 	return false
@@ -882,7 +882,7 @@ func applyEpayOptions(values map[string]string, replace bool) error {
 	if err != nil {
 		return err
 	}
-	for _, key := range []string{"PayAddress", "EpayId", "EpayKey", "PayMethods", operation_setting.EpayChannelsOptionKey, operation_setting.EpayChannelsStorageKey, operation_setting.EpayPayMethodsOptionKey} {
+	for _, key := range []string{"PayAddress", "EpayId", "EpayKey", "EpayUseMAPI", "PayMethods", operation_setting.EpayChannelsOptionKey, operation_setting.EpayChannelsStorageKey, operation_setting.EpayPayMethodsOptionKey} {
 		delete(common.OptionMap, key)
 	}
 	maps.Copy(common.OptionMap, options)
@@ -903,7 +903,7 @@ func applyEpayOptions(values map[string]string, replace bool) error {
 
 func prepareEpayOptions(tx *gorm.DB, values, stored map[string]string) (map[string]string, error) {
 	var rows []Option
-	if err := lockForUpdate(tx).Where(clause.IN{Column: clause.Column{Name: "key"}, Values: []any{"PayAddress", "EpayId", "EpayKey", "PayMethods", operation_setting.EpayChannelsStorageKey, operation_setting.EpayPayMethodsOptionKey}}).Find(&rows).Error; err != nil {
+	if err := lockForUpdate(tx).Where(clause.IN{Column: clause.Column{Name: "key"}, Values: []any{"PayAddress", "EpayId", "EpayKey", "EpayUseMAPI", "PayMethods", operation_setting.EpayChannelsStorageKey, operation_setting.EpayPayMethodsOptionKey}}).Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	for _, row := range rows {
@@ -920,10 +920,12 @@ func prepareEpayOptions(tx *gorm.DB, values, stored map[string]string) (map[stri
 			return nil, err
 		}
 		values["PayAddress"], values["EpayId"], values["EpayKey"] = "", "", ""
+		values["EpayUseMAPI"] = "false"
 		named := make([]operation_setting.EpayChannel, 0, len(channels))
 		for _, channel := range channels {
 			if channel.Name == "default" {
 				values["PayAddress"], values["EpayId"], values["EpayKey"] = channel.PayAddress, channel.EpayId, channel.EpayKey
+				values["EpayUseMAPI"] = strconv.FormatBool(channel.UseMAPI)
 			} else {
 				named = append(named, channel)
 			}
