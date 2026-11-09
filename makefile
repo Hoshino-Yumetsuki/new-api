@@ -7,10 +7,19 @@ DEV_API_SERVICE = new-api
 DEV_POSTGRES_DB = new-api
 DEV_POSTGRES_USER = root
 DEV_SQLITE_PATH ?= one-api.db
+UPSTREAM_URL ?= https://github.com/QuantumNous/new-api.git
 
-.PHONY: all build-web build-all-web start-api dev dev-api dev-api-rebuild dev-web reset-setup test
+.PHONY: all build-web build-all-web start-api dev dev-api dev-api-rebuild dev-web reset-setup test sync-upstream
 
 all: build-all-web start-api
+
+# Merge upstream/main without an editor; leave unresolved conflicts for review.
+# Remember resolutions locally so Git can reuse them on subsequent merges.
+# Reused resolutions are staged; finish those merges with git merge --continue.
+sync-upstream:
+	@git config --local rerere.enabled true
+	@git config --local rerere.autoupdate true
+	@git pull --no-rebase --no-edit "$(UPSTREAM_URL)" main
 
 build-web:
 	@echo "Building web frontend..."
