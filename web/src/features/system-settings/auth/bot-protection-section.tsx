@@ -105,28 +105,30 @@ export function BotProtectionSection({
       data.BotProtectionEnabled && data.BotProtectionProvider === 'capjs'
 
     const rows: Array<{ key: string; value: string | boolean }> = [
-      { key: 'BotProtectionEnabled', value: data.BotProtectionEnabled },
-      { key: 'BotProtectionProvider', value: data.BotProtectionProvider },
-      { key: 'TurnstileCheckEnabled', value: legacyTurnstile },
-      { key: 'CapJsCheckEnabled', value: legacyCap },
-      { key: 'CapJsApiEndpoint', value: '' },
       { key: 'TurnstileSiteKey', value: data.TurnstileSiteKey ?? '' },
       { key: 'TurnstileSecretKey', value: data.TurnstileSecretKey ?? '' },
       { key: 'CapJsSecretKey', value: data.CapJsSecretKey ?? '' },
+      { key: 'CapJsApiEndpoint', value: '' },
+      { key: 'BotProtectionProvider', value: data.BotProtectionProvider },
+      { key: 'BotProtectionEnabled', value: data.BotProtectionEnabled },
+      { key: 'TurnstileCheckEnabled', value: legacyTurnstile },
+      { key: 'CapJsCheckEnabled', value: legacyCap },
     ]
 
     for (const { key, value } of rows) {
-      const prev = defaultValues[key as keyof BotProtectionFormValues]
-      const comparablePrev =
-        key === 'TurnstileCheckEnabled'
-          ? defaultValues.BotProtectionEnabled &&
-            defaultValues.BotProtectionProvider === 'turnstile'
-          : key === 'CapJsCheckEnabled'
-            ? defaultValues.BotProtectionEnabled &&
-              defaultValues.BotProtectionProvider === 'capjs'
-            : key === 'CapJsApiEndpoint'
-              ? ''
-              : prev
+      let comparablePrev: string | boolean | undefined =
+        defaultValues[key as keyof BotProtectionFormValues]
+      if (key === 'TurnstileCheckEnabled') {
+        comparablePrev =
+          defaultValues.BotProtectionEnabled &&
+          defaultValues.BotProtectionProvider === 'turnstile'
+      } else if (key === 'CapJsCheckEnabled') {
+        comparablePrev =
+          defaultValues.BotProtectionEnabled &&
+          defaultValues.BotProtectionProvider === 'capjs'
+      } else if (key === 'CapJsApiEndpoint') {
+        comparablePrev = ''
+      }
       if (value !== comparablePrev) {
         await updateOption.mutateAsync({ key, value })
       }
