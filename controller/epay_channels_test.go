@@ -39,6 +39,9 @@ func epayChannelDatabase(t *testing.T, kind, dsn string) *gorm.DB {
 	common.QuotaPerUnit = 500000
 	operation_setting.GetGeneralSetting().QuotaDisplayType = operation_setting.QuotaDisplayTypeUSD
 	operation_setting.GetPaymentSetting().EpayChannels = nil
+	operation_setting.GetPaymentSetting().EpaySignType = operation_setting.EpaySignTypeMD5
+	operation_setting.GetPaymentSetting().EpayMerchantPrivateKey = ""
+	operation_setting.GetPaymentSetting().EpayPlatformPublicKey = ""
 	operation_setting.GetPaymentSetting().AmountDiscount = map[int]float64{}
 	operation_setting.PayMethods = nil
 	operation_setting.PayAddress, operation_setting.EpayId, operation_setting.EpayKey = "", "", ""

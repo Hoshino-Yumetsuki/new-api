@@ -44,8 +44,17 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Textarea } from '@/components/ui/textarea'
 import { getPaymentErrorTranslation } from '@/features/wallet/lib/payment'
 import { handleServerError } from '@/lib/handle-server-error'
 import { requireServerSuccess } from '@/lib/server-error-message'
@@ -108,6 +117,9 @@ const paymentSchema = z.object({
     const error = getEpayChannelsError(value)
     if (error) ctx.addIssue({ code: z.ZodIssueCode.custom, message: error })
   }),
+  EpaySignType: z.string(),
+  EpayMerchantPrivateKey: z.string(),
+  EpayPlatformPublicKey: z.string(),
   Price: z.coerce.number().min(0),
   MinTopUp: z.coerce.number().min(0),
   CustomCallbackAddress: z
@@ -448,11 +460,12 @@ export function PaymentSettingsSection({
   const onSubmit = async (values: PaymentFormValues) => {
     const channelsError = getEpayChannelsError(
       values.EpayChannels,
-      new Set(
-        parseEpayChannels(initialRef.current.EpayChannels).map(
+      new Set([
+        ...parseEpayChannels(initialRef.current.EpayChannels).map(
           (channel) => channel.name
-        )
-      )
+        ),
+        ...(values.EpaySignType === 'RSA' ? ['default'] : []),
+      ])
     )
     if (channelsError) {
       form.setError('EpayChannels', { message: channelsError })
@@ -468,6 +481,9 @@ export function PaymentSettingsSection({
           epay_key: channel.epay_key.trim(),
         }))
       ),
+      EpaySignType: values.EpaySignType,
+      EpayMerchantPrivateKey: values.EpayMerchantPrivateKey.trim(),
+      EpayPlatformPublicKey: values.EpayPlatformPublicKey.trim(),
       Price: values.Price,
       MinTopUp: values.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(values.CustomCallbackAddress),
@@ -508,6 +524,9 @@ export function PaymentSettingsSection({
 
     const initial = {
       EpayChannels: initialRef.current.EpayChannels,
+      EpaySignType: initialRef.current.EpaySignType,
+      EpayMerchantPrivateKey: initialRef.current.EpayMerchantPrivateKey.trim(),
+      EpayPlatformPublicKey: initialRef.current.EpayPlatformPublicKey.trim(),
       Price: initialRef.current.Price,
       MinTopUp: initialRef.current.MinTopUp,
       CustomCallbackAddress: removeTrailingSlash(
@@ -552,6 +571,31 @@ export function PaymentSettingsSection({
     }
 
     const updates: Array<{ key: string; value: string | number | boolean }> = []
+
+    // Keys go first: the server only accepts RSA once both saved keys work.
+    if (
+      sanitized.EpayMerchantPrivateKey &&
+      sanitized.EpayMerchantPrivateKey !== initial.EpayMerchantPrivateKey
+    ) {
+      updates.push({
+        key: 'payment_setting.epay_merchant_private_key',
+        value: sanitized.EpayMerchantPrivateKey,
+      })
+    }
+
+    if (sanitized.EpayPlatformPublicKey !== initial.EpayPlatformPublicKey) {
+      updates.push({
+        key: 'payment_setting.epay_platform_public_key',
+        value: sanitized.EpayPlatformPublicKey,
+      })
+    }
+
+    if (sanitized.EpaySignType !== initial.EpaySignType) {
+      updates.push({
+        key: 'payment_setting.epay_sign_type',
+        value: sanitized.EpaySignType,
+      })
+    }
 
     if (
       normalizeJsonForComparison(sanitized.EpayChannels) !==
@@ -1272,6 +1316,100 @@ export function PaymentSettingsSection({
                     )}
                   />
                 </div>
+                <h4 className='text-base font-medium'>
+                  {t('Default Epay channel')}
+                </h4>
+                <div className='grid gap-6 md:grid-cols-2 md:items-start'>
+                  <FormField
+                    control={form.control}
+                    name='EpaySignType'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('Signature type')}</FormLabel>
+                        <Select
+                          items={[
+                            { value: 'MD5', label: 'MD5' },
+                            { value: 'RSA', label: 'RSA' },
+                          ]}
+                          value={field.value}
+                          onValueChange={field.onChange}
+                        >
+                          <FormControl>
+                            <SelectTrigger className='w-full'>
+                              <SelectValue />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent alignItemWithTrigger={false}>
+                            <SelectGroup>
+                              <SelectItem value='MD5'>MD5</SelectItem>
+                              <SelectItem value='RSA'>RSA</SelectItem>
+                            </SelectGroup>
+                          </SelectContent>
+                        </Select>
+                        <FormDescription>
+                          {t(
+                            'Use the same signature type as in your Epay merchant console'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {currentFormValues.EpaySignType === 'RSA' && (
+                  <div className='grid gap-6 md:grid-cols-2 md:items-start'>
+                    <FormField
+                      control={form.control}
+                      name='EpayMerchantPrivateKey'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Merchant private key')}</FormLabel>
+                          <FormControl>
+                            <Input
+                              type='password'
+                              placeholder='MIIEvQIBADANBgkqhkiG9w0BAQEFAASC...'
+                              autoComplete='new-password'
+                              spellCheck={false}
+                              {...field}
+                              onPaste={(event) => {
+                                event.preventDefault()
+                                field.onChange(
+                                  event.clipboardData.getData('text')
+                                )
+                              }}
+                            />
+                          </FormControl>
+                          <FormDescription>
+                            {t('Leave blank to keep the existing key')}
+                          </FormDescription>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name='EpayPlatformPublicKey'
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{t('Platform public key')}</FormLabel>
+                          <FormControl>
+                            <Textarea
+                              rows={4}
+                              placeholder='MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8A...'
+                              autoComplete='off'
+                              spellCheck={false}
+                              className='font-mono text-xs break-all'
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                )}
               </div>
             </TabsContent>
 

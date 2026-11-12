@@ -146,10 +146,13 @@ func GetEpayClient(method string) *epay.Client {
 	if err != nil {
 		return nil
 	}
-	withUrl, err := epay.NewClient(&epay.Config{
-		PartnerID: channel.EpayId,
-		Key:       channel.EpayKey,
-	}, channel.PayAddress)
+	config := &epay.Config{PartnerID: channel.EpayId, Key: channel.EpayKey}
+	if paymentSetting := operation_setting.GetPaymentSetting(); channel.Name == "default" && paymentSetting.EpaySignType == operation_setting.EpaySignTypeRSA {
+		config.SignType = epay.SignTypeRSA
+		config.MerchantPrivateKey = paymentSetting.EpayMerchantPrivateKey
+		config.PlatformPublicKey = paymentSetting.EpayPlatformPublicKey
+	}
+	withUrl, err := epay.NewClient(config, channel.PayAddress)
 	if err != nil {
 		return nil
 	}

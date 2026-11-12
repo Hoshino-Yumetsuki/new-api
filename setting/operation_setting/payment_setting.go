@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/Calcium-Ion/go-epay/epay"
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/setting/config"
 )
@@ -31,9 +32,22 @@ type PaymentSetting struct {
 	AffCommissionType        string  `json:"aff_commission_type"`         // "percentage" 或 "fixed"
 	AffCommissionRate        float64 `json:"aff_commission_rate"`         // 百分比佣金比例，0-100
 	AffCommissionFixedAmount int     `json:"aff_commission_fixed_amount"` // 固定佣金额度（quota 单位）
+	// 易支付签名方式：MD5 使用 EpayKey；RSA 使用商户私钥签名请求、平台公钥验证回调。
+	EpaySignType           string `json:"epay_sign_type"`
+	EpayMerchantPrivateKey string `json:"epay_merchant_private_key"`
+	EpayPlatformPublicKey  string `json:"epay_platform_public_key"`
 }
 
 const CurrentComplianceTermsVersion = "v1"
+
+const (
+	EpaySignTypeMD5 = "MD5"
+	EpaySignTypeRSA = "RSA"
+
+	EpaySignTypeOptionKey           = "payment_setting.epay_sign_type"
+	EpayMerchantPrivateKeyOptionKey = "payment_setting.epay_merchant_private_key"
+	EpayPlatformPublicKeyOptionKey  = "payment_setting.epay_platform_public_key"
+)
 
 // 默认配置
 var paymentSetting = PaymentSetting{
@@ -41,6 +55,7 @@ var paymentSetting = PaymentSetting{
 	AmountOptions:     []int{10, 20, 50, 100, 200, 500},
 	AmountDiscount:    map[int]float64{},
 	AffCommissionType: AffCommissionTypePercentage,
+	EpaySignType:      EpaySignTypeMD5,
 }
 
 func init() {
@@ -178,7 +193,14 @@ func (channel EpayChannel) Validate() error {
 	if err != nil || address.Hostname() == "" || (address.Scheme != "https" && address.Scheme != "http") || address.User != nil || address.Fragment != "" {
 		return fmt.Errorf("invalid payment URL for Epay channel %s", channel.Name)
 	}
-	if strings.TrimSpace(channel.EpayId) == "" || strings.TrimSpace(channel.EpayKey) == "" {
+	if strings.TrimSpace(channel.EpayId) == "" {
+		return fmt.Errorf("merchant ID and key are required for Epay channel %s", channel.Name)
+	}
+	if channel.Name == "default" && paymentSetting.EpaySignType == EpaySignTypeRSA {
+		if strings.TrimSpace(paymentSetting.EpayMerchantPrivateKey) == "" || strings.TrimSpace(paymentSetting.EpayPlatformPublicKey) == "" {
+			return fmt.Errorf("RSA keys are required for Epay channel %s", channel.Name)
+		}
+	} else if strings.TrimSpace(channel.EpayKey) == "" {
 		return fmt.Errorf("merchant ID and key are required for Epay channel %s", channel.Name)
 	}
 	return nil
@@ -248,4 +270,42 @@ func IsNativePaymentMethod(method string) bool {
 		return true
 	}
 	return false
+}
+
+// ValidateEpaySignOption checks a change to the Epay signing settings against
+// the saved ones. While RSA is active, both keys must parse; under MD5 only a
+// newly entered key is checked.
+func ValidateEpaySignOption(key, value string) error {
+	if key != EpaySignTypeOptionKey && key != EpayMerchantPrivateKeyOptionKey && key != EpayPlatformPublicKeyOptionKey {
+		return nil
+	}
+	// Saved values are written under OptionMapRWMutex by the option update path.
+	common.OptionMapRWMutex.RLock()
+	signType := paymentSetting.EpaySignType
+	privateKey := paymentSetting.EpayMerchantPrivateKey
+	publicKey := paymentSetting.EpayPlatformPublicKey
+	common.OptionMapRWMutex.RUnlock()
+	switch key {
+	case EpaySignTypeOptionKey:
+		if value != EpaySignTypeMD5 && value != EpaySignTypeRSA {
+			return common.NewMessage("Epay signature type must be MD5 or RSA")
+		}
+		signType = value
+	case EpayMerchantPrivateKeyOptionKey:
+		privateKey = value
+	case EpayPlatformPublicKeyOptionKey:
+		publicKey = value
+	}
+	rsaActive := signType == EpaySignTypeRSA
+	if rsaActive || (key == EpayMerchantPrivateKeyOptionKey && strings.TrimSpace(value) != "") {
+		if _, err := epay.ParseRSAPrivateKey(privateKey); err != nil {
+			return common.NewMessage("The Epay merchant private key is missing or invalid")
+		}
+	}
+	if rsaActive || (key == EpayPlatformPublicKeyOptionKey && strings.TrimSpace(value) != "") {
+		if _, err := epay.ParseRSAPublicKey(publicKey); err != nil {
+			return common.NewMessage("The Epay platform public key is missing or invalid")
+		}
+	}
+	return nil
 }

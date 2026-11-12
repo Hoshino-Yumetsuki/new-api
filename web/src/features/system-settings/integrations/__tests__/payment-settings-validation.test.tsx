@@ -76,6 +76,9 @@ function renderSettings(
         <PaymentSettingsSection
           defaultValues={{
             EpayChannels: JSON.stringify(channels),
+            EpaySignType: 'MD5',
+            EpayMerchantPrivateKey: '',
+            EpayPlatformPublicKey: '',
             Price: 7.3,
             MinTopUp: 1,
             CustomCallbackAddress: '',
