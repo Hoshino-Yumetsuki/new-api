@@ -1,15 +1,20 @@
 package controller
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
+	"github.com/QuantumNous/new-api/middleware"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/setting"
@@ -564,4 +569,196 @@ func TestSetupLoginDoesNotTouchPasswordWhenPasswordFieldOmitted(t *testing.T) {
 	var stored model.User
 	require.NoError(t, db.First(&stored, user.Id).Error)
 	assert.Equal(t, hashedPassword, stored.Password)
+}
+
+type modelCapabilitiesTransport func(*http.Request) (*http.Response, error)
+
+func (transport modelCapabilitiesTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	return transport(request)
+}
+
+func TestListModelsCodexPreservesModelAvailability(t *testing.T) {
+	db := setupModelListControllerTestDB(t)
+	require.NoError(t, db.AutoMigrate(&model.Token{}))
+	require.NoError(t, i18n.Init())
+	withSelfUseModeEnabled(t)
+	originalCatalog := modelsDevCatalog
+	modelsDevCatalog = &modelsDevCapabilityCache{}
+	t.Cleanup(func() { modelsDevCatalog = originalCatalog })
+
+	var fetches, sourceMode atomic.Int32
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fetches.Add(1)
+		if r.URL.Path != "/api.json" {
+			http.NotFound(w, r)
+			return
+		}
+		switch sourceMode.Load() {
+		case 0:
+			w.WriteHeader(http.StatusServiceUnavailable)
+		case 1:
+			_, _ = w.Write([]byte(`{"broken":`))
+		default:
+			_, _ = w.Write([]byte(`{
+				"a-reseller":{"models":{
+					"gpt-5.2-codex":{"id":"gpt-5.2-codex","canonical_model_id":"openai/gpt-5.2-codex","name":"Reseller Codex","limit":{"context":1000}},
+					"deployment-id":{"id":"deployment-id","canonical_model_id":"openai/canonical-only","name":"Canonical only","reasoning":true,"reasoning_options":[{"type":"budget_tokens","min":1024}],"tool_call":true,"modalities":{"input":["text","audio","video"]},"limit":{"input":2048}}
+				}},
+				"openai":{"models":{
+					"gpt-5.2-codex":{"id":"gpt-5.2-codex","canonical_model_id":"openai/gpt-5.2-codex","name":"GPT-5.2 Codex","description":"Coding model","reasoning":true,"reasoning_options":[{"type":"effort","values":["low","medium","high","xhigh"]}],"tool_call":true,"modalities":{"input":["text","image","pdf"]},"limit":{"context":400000,"input":272000}},
+					"zz-plain-chat":{"id":"zz-plain-chat","name":"Plain Chat","reasoning":false,"tool_call":false,"modalities":{"input":["text"]},"limit":{"context":8192}}
+				}}
+			}`))
+		}
+	}))
+	t.Cleanup(source.Close)
+	client := getHTTPClient()
+	originalTransport := client.Transport
+	client.Transport = modelCapabilitiesTransport(func(request *http.Request) (*http.Response, error) {
+		if request.URL.Scheme != "https" || request.URL.Host != "models.dev" {
+			return nil, fmt.Errorf("unexpected model capability URL: %s", request.URL)
+		}
+		clone := request.Clone(request.Context())
+		clone.URL.Scheme = "http"
+		clone.URL.Host = strings.TrimPrefix(source.URL, "http://")
+		return http.DefaultTransport.RoundTrip(clone)
+	})
+	t.Cleanup(func() { client.Transport = originalTransport })
+
+	user := model.User{Username: "codex-models-user", Status: common.UserStatusEnabled, Group: "default", Quota: 100}
+	require.NoError(t, model.DB.Create(&user).Error)
+	require.NoError(t, model.DB.Create(&[]model.Ability{
+		{Group: "default", Model: "gpt-5.2-codex", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "openai/gpt-5.2-codex", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "canonical-only", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "zz-plain-chat", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "zz-custom-coding", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "zz-custom-coding", ChannelId: 2, Enabled: true},
+		{Group: "default", Model: "zz-token-denied", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "zz-disabled", ChannelId: 1, Enabled: false},
+		{Group: "vip", Model: "zz-other-group", ChannelId: 1, Enabled: true},
+	}).Error)
+	require.NoError(t, model.DB.Create(&[]model.Token{
+		{
+			UserId: user.Id, Key: "codexmodelskey", Status: common.TokenStatusEnabled,
+			ExpiredTime: -1, UnlimitedQuota: true, ModelLimitsEnabled: true,
+			ModelLimits: "gpt-5.2-codex,openai/gpt-5.2-codex,canonical-only,zz-plain-chat,zz-custom-coding,zz-disabled,zz-other-group,zz-missing",
+		},
+		{
+			UserId: user.Id, Key: "codexemptymodelskey", Status: common.TokenStatusEnabled,
+			ExpiredTime: -1, UnlimitedQuota: true, ModelLimitsEnabled: true, ModelLimits: "zz-missing",
+		},
+	}).Error)
+
+	engine := gin.New()
+	engine.GET("/v1/models", middleware.TokenAuth(), func(c *gin.Context) {
+		ListModels(c, constant.ChannelTypeCodex)
+	})
+	// Transport and parse failures must not poison the permanent cache.
+	for mode := range 2 {
+		sourceMode.Store(int32(mode))
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodGet, "/v1/models?client_version=0.165.0", nil)
+		request.Header.Set("Authorization", "Bearer codexmodelskey")
+		request.Header.Set("Accept-Language", "en")
+		engine.ServeHTTP(recorder, request)
+		require.Equal(t, http.StatusBadGateway, recorder.Code)
+		var payload struct {
+			Error struct {
+				Code    string `json:"code"`
+				Message string `json:"message"`
+			} `json:"error"`
+		}
+		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
+		assert.Equal(t, "model_capabilities_unavailable", payload.Error.Code)
+		assert.Contains(t, payload.Error.Message, "Failed to load model capabilities")
+	}
+	sourceMode.Store(2)
+	var callers sync.WaitGroup
+	results := make(chan error, 2)
+	for range 2 {
+		callers.Go(func() {
+			_, err := getModelsDevCapabilities(context.Background())
+			results <- err
+		})
+	}
+	callers.Wait()
+	for range 2 {
+		require.NoError(t, <-results)
+	}
+	require.Equal(t, int32(3), fetches.Load(), "concurrent callers share one successful catalog fetch")
+	source.Close()
+
+	for _, test := range []struct {
+		name string
+		key  string
+		want []string
+	}{
+		{name: "cached models with upstream offline", key: "codexmodelskey", want: []string{"gpt-5.2-codex", "openai/gpt-5.2-codex", "canonical-only", "zz-plain-chat", "zz-custom-coding"}},
+		{name: "empty catalog", key: "codexemptymodelskey", want: []string{}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, "/v1/models?client_version=0.165.0", nil)
+			request.Header.Set("Authorization", "Bearer "+test.key)
+			engine.ServeHTTP(recorder, request)
+
+			require.Equal(t, http.StatusOK, recorder.Code)
+			var payload struct {
+				Models []map[string]any `json:"models"`
+			}
+			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
+			require.NotNil(t, payload.Models, "Codex requires an array, including for an empty catalog")
+			slugs := make([]string, 0, len(payload.Models))
+			for _, item := range payload.Models {
+				slug, ok := item["slug"].(string)
+				require.True(t, ok)
+				slugs = append(slugs, slug)
+				assert.Equal(t, "list", item["visibility"])
+				assert.Equal(t, true, item["supported_in_api"])
+				assert.NotEmpty(t, item["base_instructions"])
+				switch slug {
+				case "gpt-5.2-codex", "openai/gpt-5.2-codex":
+					assert.Equal(t, "GPT-5.2 Codex", item["display_name"])
+					assert.Equal(t, "Coding model", item["description"])
+					assert.Equal(t, "medium", item["default_reasoning_level"])
+					assert.Equal(t, float64(272000), item["context_window"])
+					assert.Equal(t, []any{"text", "image"}, item["input_modalities"])
+					assert.Equal(t, "unified_exec", item["shell_type"])
+					levels, ok := item["supported_reasoning_levels"].([]any)
+					require.True(t, ok)
+					efforts := make([]any, 0, len(levels))
+					for _, level := range levels {
+						preset, ok := level.(map[string]any)
+						require.True(t, ok)
+						efforts = append(efforts, preset["effort"])
+					}
+					assert.Equal(t, []any{"low", "medium", "high", "xhigh"}, efforts)
+				case "canonical-only":
+					assert.Equal(t, "Canonical only", item["display_name"])
+					assert.Equal(t, float64(2048), item["context_window"])
+					assert.Equal(t, []any{"text", "audio"}, item["input_modalities"])
+					assert.Equal(t, []any{}, item["supported_reasoning_levels"], "token budgets are not effort levels")
+				case "zz-plain-chat":
+					assert.Equal(t, "disabled", item["shell_type"])
+					assert.Equal(t, float64(8192), item["context_window"])
+					assert.Equal(t, []any{}, item["supported_reasoning_levels"])
+				case "zz-custom-coding":
+					assert.Equal(t, slug, item["display_name"])
+					assert.Equal(t, []any{}, item["supported_reasoning_levels"])
+					assert.Equal(t, []any{"text"}, item["input_modalities"])
+					assert.NotContains(t, item, "context_window")
+					assert.NotContains(t, item, "default_reasoning_level")
+				}
+				for _, capability := range []string{
+					"supports_reasoning_summaries", "supports_reasoning_summary_parameter",
+					"support_verbosity", "supports_parallel_tool_calls",
+				} {
+					assert.Equal(t, false, item[capability], "models.dev does not advertise %s", capability)
+				}
+			}
+			assert.ElementsMatch(t, test.want, slugs)
+		})
+	}
+	assert.Equal(t, int32(3), fetches.Load(), "a successful catalog has no refresh or expiry")
 }

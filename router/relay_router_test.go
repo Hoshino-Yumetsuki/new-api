@@ -54,6 +54,19 @@ func TestListModelsSupportsOpenAIAndGeminiAuthentication(t *testing.T) {
 			expectedField:  "data",
 		},
 		{
+			name:          "Codex client version",
+			path:          "/v1/models?client_version=0.98.0",
+			headerName:    "Authorization",
+			expectedField: "models",
+		},
+		{
+			name:           "Empty client version keeps OpenAI format",
+			path:           "/v1/models?client_version=",
+			headerName:     "Authorization",
+			expectedObject: "list",
+			expectedField:  "data",
+		},
+		{
 			name:          "Gemini API key header",
 			path:          "/v1/models",
 			headerName:    "x-goog-api-key",
