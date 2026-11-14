@@ -58,6 +58,7 @@ describe('log settings save', () => {
             'general_setting.hide_model_redirect_for_non_admin': false,
             'log_setting.user_export_enabled': true,
             'log_setting.max_range_days': 365,
+            'system_task_setting.retention_days': 30,
           }}
         />
       </SettingsPageProvider>
@@ -89,6 +90,7 @@ describe('log settings save', () => {
             'general_setting.hide_model_redirect_for_non_admin': false,
             'log_setting.user_export_enabled': true,
             'log_setting.max_range_days': 365,
+            'system_task_setting.retention_days': 30,
           }}
         />
       </SettingsPageProvider>
@@ -102,6 +104,7 @@ describe('log settings save', () => {
             'general_setting.hide_model_redirect_for_non_admin': true,
             'log_setting.user_export_enabled': false,
             'log_setting.max_range_days': 30,
+            'system_task_setting.retention_days': 7,
           }}
         />
       </SettingsPageProvider>
@@ -124,6 +127,11 @@ describe('log settings save', () => {
           name: 'Longest log time range (days)',
         })
       ).toHaveValue(30)
+      expect(
+        screen.getByRole('spinbutton', {
+          name: 'Keep finished tasks for (days)',
+        })
+      ).toHaveValue(7)
     })
     expect(mutateAsync).not.toHaveBeenCalled()
   })
