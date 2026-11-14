@@ -28,6 +28,8 @@ func SetRelayRouter(router *gin.Engine) {
 				controller.ListModels(c, constant.ChannelTypeAnthropic)
 			case c.GetHeader("x-goog-api-key") != "" || c.Query("key") != "": // 单独的适配
 				controller.ListModels(c, constant.ChannelTypeGemini)
+			case c.Query("client_version") != "":
+				controller.ListModels(c, constant.ChannelTypeCodex)
 			default:
 				controller.ListModels(c, constant.ChannelTypeOpenAI)
 			}

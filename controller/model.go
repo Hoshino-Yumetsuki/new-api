@@ -8,6 +8,7 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/constant"
+	"github.com/QuantumNous/new-api/i18n"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/jsplugin"
 	"github.com/QuantumNous/new-api/relay"
@@ -179,6 +180,39 @@ func buildOpenAIModel(modelName string, ownerByModel map[string]string) dto.Open
 	return oaiModel
 }
 
+// codexModel is the ModelInfo wire format consumed by Codex's /models endpoint.
+// Capabilities are populated from models.dev; undocumented fields stay disabled.
+type codexModel struct {
+	Slug                              string                `json:"slug"`
+	DisplayName                       string                `json:"display_name"`
+	Description                       string                `json:"description"`
+	DefaultReasoningLevel             string                `json:"default_reasoning_level,omitempty"`
+	SupportedReasoningLevels          []codexReasoningLevel `json:"supported_reasoning_levels"`
+	ShellType                         string                `json:"shell_type"`
+	Visibility                        string                `json:"visibility"`
+	SupportedInAPI                    bool                  `json:"supported_in_api"`
+	Priority                          int                   `json:"priority"`
+	BaseInstructions                  string                `json:"base_instructions"`
+	SupportsReasoningSummaries        bool                  `json:"supports_reasoning_summaries"`
+	SupportsReasoningSummaryParameter bool                  `json:"supports_reasoning_summary_parameter"`
+	SupportVerbosity                  bool                  `json:"support_verbosity"`
+	TruncationPolicy                  codexTruncationPolicy `json:"truncation_policy"`
+	SupportsParallelToolCalls         bool                  `json:"supports_parallel_tool_calls"`
+	ExperimentalSupportedTools        []string              `json:"experimental_supported_tools"`
+	InputModalities                   []string              `json:"input_modalities"`
+	ContextWindow                     int64                 `json:"context_window,omitempty"`
+}
+
+type codexReasoningLevel struct {
+	Effort      string `json:"effort"`
+	Description string `json:"description"`
+}
+
+type codexTruncationPolicy struct {
+	Mode  string `json:"mode"`
+	Limit int    `json:"limit"`
+}
+
 type modelListGroups struct {
 	userGroup   string
 	tokenGroup  string
@@ -260,6 +294,81 @@ func ListModels(c *gin.Context, modelType int) {
 			continue
 		}
 		userModelNames = append(userModelNames, modelName)
+	}
+
+	if modelType == constant.ChannelTypeCodex {
+		var capabilities map[string]modelsDevCapabilities
+		if len(userModelNames) > 0 {
+			capabilities, err = getModelsDevCapabilities(c.Request.Context())
+			if err != nil {
+				c.JSON(http.StatusBadGateway, gin.H{"error": gin.H{
+					"type":    "server_error",
+					"code":    "model_capabilities_unavailable",
+					"message": i18n.T(c, i18n.MsgModelCapabilitiesUnavailable, map[string]any{"Error": err.Error()}),
+				}})
+				return
+			}
+		}
+		models := make([]codexModel, 0, len(userModelNames))
+		for i, modelName := range userModelNames {
+			entry := codexModel{
+				Slug:                       modelName,
+				DisplayName:                modelName,
+				SupportedReasoningLevels:   []codexReasoningLevel{},
+				ShellType:                  "unified_exec",
+				Visibility:                 "list",
+				SupportedInAPI:             true,
+				Priority:                   i,
+				BaseInstructions:           "You are a helpful coding assistant.",
+				TruncationPolicy:           codexTruncationPolicy{Mode: "bytes", Limit: 10000},
+				ExperimentalSupportedTools: []string{},
+				InputModalities:            []string{"text"},
+			}
+			if capability, ok := capabilities[modelName]; ok {
+				if capability.Name != "" {
+					entry.DisplayName = capability.Name
+				}
+				entry.Description = capability.Description
+				entry.ContextWindow = max(capability.Limit.Context, 0)
+				if capability.Limit.Input > 0 {
+					entry.ContextWindow = capability.Limit.Input
+					if capability.Limit.Context > 0 {
+						entry.ContextWindow = min(entry.ContextWindow, capability.Limit.Context)
+					}
+				}
+				if !capability.ToolCall {
+					entry.ShellType = "disabled"
+				}
+				entry.InputModalities = make([]string, 0, len(capability.Modalities.Input))
+				for _, modality := range capability.Modalities.Input {
+					switch modality {
+					case "text", "image", "audio":
+						entry.InputModalities = append(entry.InputModalities, modality)
+					}
+				}
+				if capability.Reasoning {
+					for _, option := range capability.ReasoningOptions {
+						if option.Type != "effort" {
+							continue
+						}
+						for _, effort := range option.Values {
+							if effort == "" || effort == "default" {
+								continue
+							}
+							entry.SupportedReasoningLevels = append(entry.SupportedReasoningLevels, codexReasoningLevel{
+								Effort: effort, Description: "Reasoning effort: " + effort,
+							})
+							if entry.DefaultReasoningLevel == "" || effort == "medium" {
+								entry.DefaultReasoningLevel = effort
+							}
+						}
+					}
+				}
+			}
+			models = append(models, entry)
+		}
+		c.JSON(http.StatusOK, gin.H{"models": models})
+		return
 	}
 
 	ownerByModel := map[string]string{}
