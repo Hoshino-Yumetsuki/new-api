@@ -75,7 +75,7 @@
       "get": {
         "summary": "获取模型列表",
         "deprecated": false,
-        "description": "获取当前可用的模型列表。\n\n根据请求头自动识别返回格式：\n- 包含 `x-api-key` 和 `anthropic-version` 头时返回 Anthropic 格式\n- 包含 `x-goog-api-key` 头或 `key` 查询参数时返回 Gemini 格式\n- 其他情况返回 OpenAI 格式\n",
+        "description": "获取当前可用的模型列表。\n\n根据请求头和查询参数自动识别返回格式（按以下顺序匹配）：\n- 包含 `x-api-key` 和 `anthropic-version` 头时返回 Anthropic 格式\n- 包含 `x-goog-api-key` 头或 `key` 查询参数时返回 Gemini 格式\n- 包含非空 `client_version` 查询参数时返回 Codex 原生目录格式 `{\"models\":[...]}`\n- 其他情况返回 OpenAI 格式\n\nCodex 请求示例：`GET /v1/models?client_version=0.165.0`，使用相同的 Bearer API Key 认证。模型仍按用户分组、令牌模型限制和计费配置筛选；没有可用模型时返回 `{\"models\":[]}`，不拉取外部能力目录。\n\n模型能力从 `https://models.dev/api.json` 获取：首次需要展示模型时按需拉取，并发请求合并为一次拉取；成功后始终缓存在当前进程内存中，不设过期时间、不自动刷新、不写入数据库或磁盘，重启后重新拉取。拉取或解析失败时返回 HTTP 502，不缓存失败结果，后续请求可以重新拉取。仅使用能力元数据，不导入目录中的模型价格。\n\n目录条目使用 Codex ModelInfo 格式。按模型 ID、提供商限定 ID 或 canonical_model_id 匹配能力，原生提供商条目优先于转售条目；保留网关原有的模型 slug。名称、描述、输入模态和上下文限制来自能力目录；context_window 优先使用 limit.input，且不超过 limit.context，未提供输入限制时使用 limit.context。推理档位仅来自 reasoning_options 中 effort 类型的明确取值，不把开关或 token 预算转换为推理档位；默认优先选择 medium，否则选择第一个档位。不支持工具调用的模型禁用 shell 工具。未匹配的模型保留保守默认值；目录未声明的推理摘要、并行工具调用和 verbosity 能力不作推断。\n",
         "operationId": "listModels",
         "tags": [
           "获取模型列表"
@@ -86,6 +86,16 @@
             "in": "query",
             "description": "Google API Key (用于 Gemini 格式)",
             "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "client_version",
+            "in": "query",
+            "description": "Codex 客户端版本；非空时选择 Codex 模型目录格式（Anthropic/Gemini 格式识别优先）",
+            "required": false,
+            "example": "0.98.0",
             "schema": {
               "type": "string"
             }
@@ -128,7 +138,24 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ModelsResponse"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ModelsResponse"
+                    },
+                    {
+                      "type": "object",
+                      "required": ["models"],
+                      "properties": {
+                        "models": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "description": "Codex ModelInfo 模型目录条目"
+                          }
+                        }
+                      }
+                    }
+                  ]
                 }
               }
             },
@@ -144,6 +171,16 @@
               }
             },
             "headers": {}
+          },
+          "502": {
+            "description": "models.dev 能力目录拉取或解析失败；失败不缓存，可在后续请求重试",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           }
         },
         "security": [
