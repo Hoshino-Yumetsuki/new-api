@@ -634,6 +634,10 @@ func TestListModelsCodexPreservesModelAvailability(t *testing.T) {
 		{Group: "default", Model: "zz-plain-chat", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-custom-coding", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-custom-coding", ChannelId: 2, Enabled: true},
+		{Group: "default", Model: "GPT-5.10", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "gpt-5.2", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "gpt_5.2", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "gpt/5.2", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-token-denied", ChannelId: 1, Enabled: true},
 		{Group: "default", Model: "zz-disabled", ChannelId: 1, Enabled: false},
 		{Group: "vip", Model: "zz-other-group", ChannelId: 1, Enabled: true},
@@ -642,7 +646,7 @@ func TestListModelsCodexPreservesModelAvailability(t *testing.T) {
 		{
 			UserId: user.Id, Key: "codexmodelskey", Status: common.TokenStatusEnabled,
 			ExpiredTime: -1, UnlimitedQuota: true, ModelLimitsEnabled: true,
-			ModelLimits: "gpt-5.2-codex,openai/gpt-5.2-codex,canonical-only,zz-plain-chat,zz-custom-coding,zz-disabled,zz-other-group,zz-missing",
+			ModelLimits: "gpt-5.2-codex,openai/gpt-5.2-codex,canonical-only,zz-plain-chat,zz-custom-coding,GPT-5.10,gpt-5.2,gpt_5.2,gpt/5.2,zz-disabled,zz-other-group,zz-missing",
 		},
 		{
 			UserId: user.Id, Key: "codexemptymodelskey", Status: common.TokenStatusEnabled,
@@ -694,7 +698,7 @@ func TestListModelsCodexPreservesModelAvailability(t *testing.T) {
 		key  string
 		want []string
 	}{
-		{name: "cached models with upstream offline", key: "codexmodelskey", want: []string{"gpt-5.2-codex", "openai/gpt-5.2-codex", "canonical-only", "zz-plain-chat", "zz-custom-coding"}},
+		{name: "cached models with upstream offline", key: "codexmodelskey", want: []string{"canonical-only", "gpt_5.2", "GPT-5.10", "gpt-5.2", "gpt-5.2-codex", "gpt/5.2", "openai/gpt-5.2-codex", "zz-custom-coding", "zz-plain-chat"}},
 		{name: "empty catalog", key: "codexemptymodelskey", want: []string{}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -710,12 +714,13 @@ func TestListModelsCodexPreservesModelAvailability(t *testing.T) {
 			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &payload))
 			require.NotNil(t, payload.Models, "Codex requires an array, including for an empty catalog")
 			slugs := make([]string, 0, len(payload.Models))
-			for _, item := range payload.Models {
+			for i, item := range payload.Models {
 				slug, ok := item["slug"].(string)
 				require.True(t, ok)
 				slugs = append(slugs, slug)
 				assert.Equal(t, "list", item["visibility"])
 				assert.Equal(t, true, item["supported_in_api"])
+				assert.Equal(t, float64(i), item["priority"], "Codex priority follows the sorted model order")
 				assert.NotEmpty(t, item["base_instructions"])
 				switch slug {
 				case "gpt-5.2-codex", "openai/gpt-5.2-codex":
@@ -757,7 +762,7 @@ func TestListModelsCodexPreservesModelAvailability(t *testing.T) {
 					assert.Equal(t, false, item[capability], "models.dev does not advertise %s", capability)
 				}
 			}
-			assert.ElementsMatch(t, test.want, slugs)
+			assert.Equal(t, test.want, slugs)
 		})
 	}
 	assert.Equal(t, int32(3), fetches.Load(), "a successful catalog has no refresh or expiry")

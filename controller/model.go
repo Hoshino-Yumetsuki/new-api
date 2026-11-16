@@ -3,6 +3,7 @@ package controller
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -25,6 +26,8 @@ import (
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
 	"github.com/samber/lo"
+	"golang.org/x/text/collate"
+	"golang.org/x/text/language"
 )
 
 // https://platform.openai.com/docs/api-reference/models/list
@@ -309,6 +312,8 @@ func ListModels(c *gin.Context, modelType int) {
 				return
 			}
 		}
+		// Match the model square's default localeCompare ordering by model name.
+		slices.SortFunc(userModelNames, collate.New(language.Und).CompareString)
 		models := make([]codexModel, 0, len(userModelNames))
 		for i, modelName := range userModelNames {
 			entry := codexModel{
