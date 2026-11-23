@@ -42,6 +42,16 @@ describe('model group selector group detail', () => {
     ).toBe('用户分组 · 倍率：自动')
   })
 
+  test('keeps a group name used as its description even when it is a translation key', async () => {
+    const i18n = createInstance()
+    await i18n.init({
+      lng: 'zh',
+      resources: { zh: { translation: { image: '张' } } },
+    })
+
+    expect(formatGroupDetail({ desc: 'image' }, i18n.t)).toBe('image')
+  })
+
   test('keeps an administrator description and a numeric ratio as written', async () => {
     const i18n = createInstance()
     await i18n.init({ lng: 'en', resources: { en: { translation: {} } } })
