@@ -35,6 +35,7 @@ type FilterDef = {
   columnId: string
   title: string
   options: {
+    /** Display text: localize UI labels at the call site, not data such as group names. */
     label: string
     value: string
     icon?: React.ComponentType<{ className?: string }>

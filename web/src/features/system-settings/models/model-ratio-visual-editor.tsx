@@ -801,22 +801,22 @@ const ModelRatioVisualEditorComponent = forwardRef<
                 title: t('Mode'),
                 options: [
                   {
-                    label: 'Per-token (deprecated)',
+                    label: t('Per-token (deprecated)'),
                     value: 'per-token',
                     count: modeCounts['per-token'],
                   },
                   {
-                    label: 'Per-request (deprecated)',
+                    label: t('Per-request (deprecated)'),
                     value: 'per-request',
                     count: modeCounts['per-request'],
                   },
                   {
-                    label: 'Expression',
+                    label: t('Expression'),
                     value: 'tiered_expr',
                     count: modeCounts.tiered_expr,
                   },
                   {
-                    label: 'Expression - Task pricing',
+                    label: t('Expression - Task pricing'),
                     value: TASK_PRICING_MODE_FILTER,
                     count: modeCounts[TASK_PRICING_MODE_FILTER],
                   },
@@ -827,7 +827,7 @@ const ModelRatioVisualEditorComponent = forwardRef<
                 title: t('Price status'),
                 options: [
                   {
-                    label: 'Price needs attention',
+                    label: t('Price needs attention'),
                     value: PRICE_ATTENTION_FILTER,
                     count: attentionCount,
                   },
