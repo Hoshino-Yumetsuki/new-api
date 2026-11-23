@@ -34,6 +34,7 @@ import {
   sideDrawerHeaderClassName,
   sideDrawerSwitchItemClassName,
 } from '@/components/drawer-layout'
+import { formatGroupDescription } from '@/components/model-group-selector/group-detail'
 import { MultiSelect } from '@/components/multi-select'
 import { Button } from '@/components/ui/button'
 import {
@@ -67,10 +68,7 @@ import { useStatus } from '@/hooks/use-status'
 import { getUserModels, getUserGroups } from '@/lib/api'
 import { getCurrencyDisplay, getCurrencyLabel } from '@/lib/currency'
 import { handleServerError } from '@/lib/handle-server-error'
-import {
-  requireServerSuccess,
-  translateServerText,
-} from '@/lib/server-error-message'
+import { requireServerSuccess } from '@/lib/server-error-message'
 import { cn } from '@/lib/utils'
 
 import {
@@ -169,7 +167,7 @@ export function ApiKeysMutateDrawer({
       ([key, info]) => ({
         value: key,
         label: key,
-        desc: info.desc ? translateServerText(t, info.desc) : key,
+        desc: info.desc ? formatGroupDescription(info.desc, t) : key,
         ratio: info.ratio,
       })
     )

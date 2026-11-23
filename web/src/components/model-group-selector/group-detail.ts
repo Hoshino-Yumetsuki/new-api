@@ -16,7 +16,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { translateServerText } from '@/lib/server-error-message'
+export function formatGroupDescription(
+  description: string,
+  t: (key: string) => string
+): string {
+  // Only the gateway's built-in descriptions are translation keys.
+  switch (description) {
+    case 'Default group':
+    case 'VIP group':
+    case 'User group':
+      return t(description)
+    default:
+      return description
+  }
+}
 
 export interface GroupDetailSource {
   ratio?: number | string
@@ -34,7 +47,7 @@ export function formatGroupDetail(
   t: (key: string, options?: Record<string, unknown>) => string
 ): string {
   const description = group.desc
-    ? translateServerText(t, group.desc)
+    ? formatGroupDescription(group.desc, t)
     : (group.description ?? '')
   if (!group.ratio) return description
   const value = typeof group.ratio === 'number' ? group.ratio : t('Auto')
