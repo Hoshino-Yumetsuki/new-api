@@ -313,6 +313,9 @@ func ListModels(c *gin.Context, modelType int) {
 		userModelNames = append(userModelNames, modelName)
 	}
 
+	// Match the model square's default localeCompare ordering by model name.
+	slices.SortFunc(userModelNames, collate.New(language.Und).CompareString)
+
 	if modelType == constant.ChannelTypeCodex {
 		var capabilities map[string]modelsDevCapabilities
 		if len(userModelNames) > 0 {
@@ -326,8 +329,6 @@ func ListModels(c *gin.Context, modelType int) {
 				return
 			}
 		}
-		// Match the model square's default localeCompare ordering by model name.
-		slices.SortFunc(userModelNames, collate.New(language.Und).CompareString)
 		models := make([]codexModel, 0, len(userModelNames))
 		for i, modelName := range userModelNames {
 			entry := codexModel{
