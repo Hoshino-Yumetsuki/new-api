@@ -748,6 +748,19 @@ func TestListModelsCodexPreservesModelAvailability(t *testing.T) {
 	engine.GET("/v1/models", middleware.TokenAuth(), func(c *gin.Context) {
 		ListModels(c, constant.ChannelTypeCodex)
 	})
+	formats := []struct {
+		name      string
+		modelType int
+	}{
+		{"openai", constant.ChannelTypeOpenAI},
+		{"anthropic", constant.ChannelTypeAnthropic},
+		{"gemini", constant.ChannelTypeGemini},
+	}
+	for _, format := range formats {
+		engine.GET("/"+format.name+"/models", middleware.TokenAuth(), func(c *gin.Context) {
+			ListModels(c, format.modelType)
+		})
+	}
 	// Transport and parse failures must not poison the permanent cache.
 	for mode := range 2 {
 		sourceMode.Store(int32(mode))
@@ -853,6 +866,50 @@ func TestListModelsCodexPreservesModelAvailability(t *testing.T) {
 				}
 			}
 			assert.Equal(t, test.want, slugs)
+
+			for _, format := range formats {
+				t.Run(format.name, func(t *testing.T) {
+					recorder := httptest.NewRecorder()
+					request := httptest.NewRequest(http.MethodGet, "/"+format.name+"/models", nil)
+					request.Header.Set("Authorization", "Bearer "+test.key)
+					engine.ServeHTTP(recorder, request)
+
+					require.Equal(t, http.StatusOK, recorder.Code)
+					var response struct {
+						Data []struct {
+							ID string `json:"id"`
+						} `json:"data"`
+						Models []struct {
+							Name string `json:"name"`
+						} `json:"models"`
+						FirstID string `json:"first_id"`
+						LastID  string `json:"last_id"`
+					}
+					require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response))
+					ids := make([]string, 0, len(test.want))
+					if format.modelType == constant.ChannelTypeGemini {
+						require.NotNil(t, response.Models)
+						for _, item := range response.Models {
+							ids = append(ids, item.Name)
+						}
+					} else {
+						require.NotNil(t, response.Data)
+						for _, item := range response.Data {
+							ids = append(ids, item.ID)
+						}
+					}
+					assert.Equal(t, test.want, ids, "all formats use the same model ordering")
+					if format.modelType == constant.ChannelTypeAnthropic {
+						if len(test.want) == 0 {
+							assert.Empty(t, response.FirstID)
+							assert.Empty(t, response.LastID)
+						} else {
+							assert.Equal(t, test.want[0], response.FirstID)
+							assert.Equal(t, test.want[len(test.want)-1], response.LastID)
+						}
+					}
+				})
+			}
 		})
 	}
 	assert.Equal(t, int32(3), fetches.Load(), "a successful catalog has no refresh or expiry")
