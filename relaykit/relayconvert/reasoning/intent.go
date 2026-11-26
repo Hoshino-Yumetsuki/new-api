@@ -3,6 +3,7 @@ package reasoning
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -609,6 +610,35 @@ func FromClaude(req *dto.ClaudeRequest) (Intent, []types.ConversionDiagnostic, e
 			intent.Effort = effort
 		}
 	}
+	// A per-message effort applies immediately after new user input, otherwise
+	// from the next user turn with new input (tool-result-only turns do not
+	// activate it). Keep a pending value separately for unfinished histories.
+	var pending Effort
+	for index := range req.Messages {
+		message := &req.Messages[index]
+		if message.Role == "system" && len(message.OutputConfig) > 0 {
+			var output dto.OutputConfigForEffort
+			if err := kitutil.Unmarshal(message.OutputConfig, &output); err != nil {
+				return Intent{}, nil, fmt.Errorf("invalid Claude messages[%d].output_config: %w", index, err)
+			}
+			if output.Effort != "" {
+				effort, err := ParseEffort(output.Effort)
+				if err != nil {
+					return Intent{}, nil, err
+				}
+				if index > 0 && claudeTurnHasNewInput(&req.Messages[index-1]) {
+					intent.Effort = effort
+					pending = ""
+				} else {
+					pending = effort
+				}
+			}
+		}
+		if pending != "" && claudeTurnHasNewInput(message) {
+			intent.Effort = pending
+			pending = ""
+		}
+	}
 	if intent.Mode == ModeDisabled && intent.Effort != "" && intent.Effort != EffortNone {
 		return intent, diagnostics, nil
 	}
@@ -617,6 +647,17 @@ func FromClaude(req *dto.ClaudeRequest) (Intent, []types.ConversionDiagnostic, e
 		return Intent{}, nil, err
 	}
 	return normalized, append(diagnostics, normalizeDiagnostics...), nil
+}
+
+func claudeTurnHasNewInput(message *dto.ClaudeMessage) bool {
+	if message.Role != "user" {
+		return false
+	}
+	if message.IsStringContent() {
+		return message.GetStringContent() != ""
+	}
+	blocks, _ := message.ParseContent()
+	return slices.ContainsFunc(blocks, func(block dto.ClaudeMediaMessage) bool { return block.Type != "tool_result" })
 }
 
 // FromGemini reads a native thinkingConfig. A config carrying both a budget
