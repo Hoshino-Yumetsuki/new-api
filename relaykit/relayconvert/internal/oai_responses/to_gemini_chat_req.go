@@ -56,12 +56,10 @@ func OpenAIResponsesRequestToGeminiChat(c context.Context, req *dto.OpenAIRespon
 		return nil, reasoning.AsClientError(err)
 	}
 	convdiag.Add(c, diagnostics...)
-	var reasoningPivot dto.GeneralOpenAIRequest
+	reasoningPivot := dto.GeneralOpenAIRequest{Model: req.Model}
 	if err := reasoning.ApplyToOpenAIChat(&reasoningPivot, reasoningIntent); err != nil {
 		return nil, reasoning.AsClientError(err)
 	}
-	reasoningPivot.Model = req.Model
-	reasoningPivot.MaxCompletionTokens = req.MaxOutputTokens
 	if err := sharedgemini.ApplyThinkingConfig(c, geminiRequest, info, reasoningPivot); err != nil {
 		return nil, reasoning.AsClientError(err)
 	}

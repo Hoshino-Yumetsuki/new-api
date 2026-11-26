@@ -344,11 +344,12 @@ func GetOpenAIChatCapabilities(modelName, reasoningEffort string) OpenAIChatCapa
 		return capabilities
 	}
 
+	modelName = OpenAIBaseModel(modelName)
 	isGPT5Model := IsOpenAIGPT5Model(modelName)
-	isGPT6SolLuna := isOpenAIModelSnapshot(modelName, "gpt-6-sol") || isOpenAIModelSnapshot(modelName, "gpt-6-luna")
-	isGPT61Terra := isOpenAIModelSnapshot(modelName, "gpt-6.1-terra")
-	isGPT62 := isOpenAIModelSnapshot(modelName, "gpt-6.2-astra") || isOpenAIModelSnapshot(modelName, "gpt-6.2-sol")
-	if !isGPT5Model && !isGPT6SolLuna && !isGPT61Terra && !isGPT62 && !isOpenAIModelSnapshot(modelName, "gpt-6-astra") && !isOpenAIModelSnapshot(modelName, "gpt-6.1-sol") {
+	isGPT6SolLuna := modelName == "gpt-6-sol" || modelName == "gpt-6-luna"
+	isGPT61Terra := modelName == "gpt-6.1-terra"
+	isGPT62 := modelName == "gpt-6.2-astra" || modelName == "gpt-6.2-sol"
+	if !isGPT5Model && !isGPT6SolLuna && !isGPT61Terra && !isGPT62 && modelName != "gpt-6-astra" && modelName != "gpt-6.1-sol" {
 		return capabilities
 	}
 	capabilities.UseMaxCompletionTokens = true
@@ -369,13 +370,8 @@ func GetOpenAIChatCapabilities(modelName, reasoningEffort string) OpenAIChatCapa
 	// https://developers.openai.com/api/docs/guides/latest-model?model=gpt-6.2-astra
 	supportsSampling := false
 	if reasoningEffort == "" || reasoningEffort == "none" {
-		supportsSampling = isGPT6SolLuna || (isGPT61Terra && reasoningEffort == "none")
-		for _, model := range []string{"gpt-5.1", "gpt-5.2", "gpt-5.4"} {
-			if isOpenAIModelSnapshot(modelName, model) {
-				supportsSampling = true
-				break
-			}
-		}
+		supportsSampling = isGPT6SolLuna || (isGPT61Terra && reasoningEffort == "none") ||
+			modelName == "gpt-5.1" || modelName == "gpt-5.2" || modelName == "gpt-5.4"
 	}
 	capabilities.SupportsTemperature = supportsSampling
 	capabilities.SupportsTopP = supportsSampling
@@ -383,16 +379,15 @@ func GetOpenAIChatCapabilities(modelName, reasoningEffort string) OpenAIChatCapa
 	return capabilities
 }
 
-func isOpenAIModelSnapshot(modelName, baseModel string) bool {
-	if modelName == baseModel {
-		return true
+// OpenAIBaseModel removes only a dated snapshot suffix, not a named variant such as -pro.
+func OpenAIBaseModel(model string) string {
+	i := len(model) - len(time.DateOnly) - 1
+	if i > 0 && model[i] == '-' {
+		if _, err := time.Parse(time.DateOnly, model[i+1:]); err == nil {
+			return model[:i]
+		}
 	}
-	snapshot, ok := strings.CutPrefix(modelName, baseModel+"-")
-	if !ok {
-		return false
-	}
-	_, err := time.Parse(time.DateOnly, snapshot)
-	return err == nil
+	return model
 }
 
 func IsQwenThinkingBudgetModel(modelName string) bool {

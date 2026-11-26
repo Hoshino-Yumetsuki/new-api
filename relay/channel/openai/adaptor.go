@@ -410,9 +410,9 @@ func (a *Adaptor) ConvertOpenAIRequest(c *gin.Context, info *relaycommon.RelayIn
 			info.UpstreamModelName = baseModel
 			request.Model = baseModel
 		}
-		if canonicalEffort := kitreasoning.EffectiveEffort(currentIntent); canonicalEffort != "" {
-			request.ReasoningEffort = string(canonicalEffort)
-			info.SetReasoningEffort(string(canonicalEffort))
+		if currentIntent.HasStrength() {
+			request.ReasoningEffort = string(kitreasoning.OpenAIEffort(request.Model, currentIntent))
+			info.SetReasoningEffort(request.ReasoningEffort)
 		}
 		if info.ChannelType == constant.ChannelTypeOpenAI || info.ChannelType == constant.ChannelTypeAzure {
 			request.Reasoning = nil
@@ -735,13 +735,18 @@ func (a *Adaptor) ConvertOpenAIResponsesRequest(c *gin.Context, info *relaycommo
 			info.UpstreamModelName = originModel
 		}
 	}
-	if canonicalEffort := kitreasoning.EffectiveEffort(currentIntent); canonicalEffort != "" {
-		if request.Reasoning == nil {
-			request.Reasoning = &dto.Reasoning{}
+	if currentIntent.HasStrength() {
+		wireEffort := kitreasoning.OpenAIEffort(request.Model, currentIntent)
+		if wireEffort == "" {
+			request.Reasoning = nil
+		} else {
+			if request.Reasoning == nil {
+				request.Reasoning = &dto.Reasoning{}
+			}
+			request.Reasoning.Effort = string(wireEffort)
 		}
-		request.Reasoning.Effort = string(canonicalEffort)
 		if info != nil {
-			info.SetReasoningEffort(string(canonicalEffort))
+			info.SetReasoningEffort(string(wireEffort))
 		}
 	}
 	return request, nil

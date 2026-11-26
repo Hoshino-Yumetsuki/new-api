@@ -16,6 +16,7 @@ import (
 	oaichat "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/oai_chat"
 	oairesponses "github.com/QuantumNous/new-api/relaykit/relayconvert/internal/oai_responses"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/internal/toolconv"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
@@ -255,6 +256,29 @@ func executeRequestSteps(c context.Context, info convmeta.Meta, from types.Relay
 			return nil, err
 		}
 		steps = append(steps, step)
+	}
+
+	// Only the last step goes on the wire. An intermediate OpenAI request
+	// retains the original strength for the next provider, not a loss warning.
+	var state *dto.ReasoningConversionState
+	var sent, model, path string
+	switch out := current.(type) {
+	case *dto.GeneralOpenAIRequest:
+		state, sent, model, path = out.ReasoningConversion, out.ReasoningEffort, out.Model, "reasoning_effort"
+	case *dto.OpenAIResponsesRequest:
+		state, model, path = out.ReasoningConversion, out.Model, "reasoning.effort"
+		if out.Reasoning != nil {
+			sent = out.Reasoning.Effort
+		}
+	}
+	if wanted := reasoning.EffectiveEffort(reasoning.IntentFromState(state)); wanted != "" {
+		if info != nil {
+			info.SetReasoningEffort(sent)
+		}
+		if string(wanted) != sent {
+			convdiag.Add(c, types.ConversionDiagnostic{Code: "openai_effort_adjusted", Path: path,
+				Message: fmt.Sprintf("model %q cannot use effort %q; outgoing effort is %q (empty means omitted)", model, wanted, sent), Severity: types.ConversionDiagnosticWarning})
+		}
 	}
 
 	tools.Model = convmeta.UpstreamModelName(info)

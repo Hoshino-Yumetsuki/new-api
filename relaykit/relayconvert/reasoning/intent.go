@@ -433,7 +433,7 @@ func FromOpenAIChat(req *dto.GeneralOpenAIRequest) (Intent, []types.ConversionDi
 		BudgetSource:    SourcePivot,
 	}
 	if req.ReasoningEffort != "" {
-		pivotEffort := EffectiveEffort(pivot)
+		pivotEffort := OpenAIEffort(req.Model, pivot)
 		if Effort(req.ReasoningEffort) == pivotEffort {
 			intent.Effort = ""
 			intent.Mode = ModeUnset
@@ -458,7 +458,7 @@ func ApplyToOpenAIChat(req *dto.GeneralOpenAIRequest, intent Intent) error {
 		return err
 	}
 
-	if effort := EffectiveEffort(intent); effort != "" {
+	if effort := OpenAIEffort(req.Model, intent); effort != "" {
 		req.ReasoningEffort = string(effort)
 	}
 
@@ -486,7 +486,7 @@ func ApplyToOpenAIResponses(req *dto.OpenAIResponsesRequest, intent Intent) erro
 		return err
 	}
 
-	if effort := EffectiveEffort(intent); effort != "" {
+	if effort := OpenAIEffort(req.Model, intent); effort != "" {
 		summary := ""
 		if effort != EffortNone && intent.IncludeThoughts != nil && *intent.IncludeThoughts {
 			summary = "detailed"
@@ -545,7 +545,7 @@ func FromOpenAIResponses(req *dto.OpenAIResponsesRequest) (Intent, []types.Conve
 		BudgetSource:    SourcePivot,
 	}
 	if req.Reasoning != nil && req.Reasoning.Effort != "" {
-		pivotEffort := EffectiveEffort(pivot)
+		pivotEffort := OpenAIEffort(req.Model, pivot)
 		if Effort(req.Reasoning.Effort) == pivotEffort {
 			intent.Effort = ""
 			intent.Mode = ModeUnset
