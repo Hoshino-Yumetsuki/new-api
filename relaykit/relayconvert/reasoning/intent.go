@@ -487,9 +487,9 @@ func ApplyToOpenAIResponses(req *dto.OpenAIResponsesRequest, intent Intent) erro
 	}
 
 	if effort := EffectiveEffort(intent); effort != "" {
-		summary := "detailed"
-		if effort == EffortNone || (intent.IncludeThoughts != nil && !*intent.IncludeThoughts) {
-			summary = ""
+		summary := ""
+		if effort != EffortNone && intent.IncludeThoughts != nil && *intent.IncludeThoughts {
+			summary = "detailed"
 		}
 		req.Reasoning = &dto.Reasoning{
 			Effort:  string(effort),
