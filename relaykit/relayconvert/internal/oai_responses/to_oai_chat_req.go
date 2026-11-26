@@ -42,7 +42,11 @@ func ResponsesRequestToChatCompletionsRequest(ctx context.Context, req *dto.Open
 		return nil, err
 	}
 
-	messages, err := responsesRequestMessagesToChat(ctx, req)
+	inputItems, err := InputItems(req.Input)
+	if err != nil {
+		return nil, err
+	}
+	messages, err := responsesRequestMessagesToChat(ctx, req, inputItems)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +96,7 @@ func ResponsesRequestToChatCompletionsRequest(ctx context.Context, req *dto.Open
 		return nil, fmt.Errorf("invalid presence_penalty: %w", err)
 	}
 
-	reasoningIntent, diagnostics, err := reasoning.FromOpenAIResponses(req)
+	reasoningIntent, diagnostics, err := responsesReasoningForConversion(req, inputItems)
 	if err != nil {
 		return nil, reasoning.AsClientError(err)
 	}
@@ -143,7 +147,7 @@ func ValidateRequestChatUnsupportedFields(req *dto.OpenAIResponsesRequest) error
 	return validateResponsesRequestChatUnsupportedFields(req)
 }
 
-func responsesRequestMessagesToChat(ctx context.Context, req *dto.OpenAIResponsesRequest) ([]dto.Message, error) {
+func responsesRequestMessagesToChat(ctx context.Context, req *dto.OpenAIResponsesRequest, items []map[string]any) ([]dto.Message, error) {
 	messages := make([]dto.Message, 0)
 	if rawJSONPresent(req.Instructions) {
 		instructions, err := responsesJSONString(req.Instructions)
@@ -155,47 +159,30 @@ func responsesRequestMessagesToChat(ctx context.Context, req *dto.OpenAIResponse
 		}
 	}
 
-	if !rawJSONPresent(req.Input) {
-		return messages, nil
-	}
-
-	switch kitutil.GetJsonType(req.Input) {
-	case "string":
-		input, err := responsesJSONString(req.Input)
-		if err != nil {
-			return nil, fmt.Errorf("invalid input string: %w", err)
+	// Chat Completions requires the tool messages answering one assistant tool_calls
+	// batch to stay contiguous, so media hoisted out of tool output items is
+	// held back and emitted as a single user message once the batch ends.
+	var pendingMedia []any
+	for _, item := range items {
+		itemType := strings.TrimSpace(kitutil.Interface2String(item["type"]))
+		if itemType == "configuration_update" {
+			continue
 		}
-		messages = append(messages, dto.Message{Role: "user", Content: input})
-		return messages, nil
-	case "array":
-		var items []map[string]any
-		if err := kitutil.Unmarshal(req.Input, &items); err != nil {
-			return nil, fmt.Errorf("invalid input array: %w", err)
-		}
-		// Chat Completions requires the tool messages answering one assistant tool_calls
-		// batch to stay contiguous, so media hoisted out of tool output items is
-		// held back and emitted as a single user message once the batch ends.
-		var pendingMedia []any
-		for _, item := range items {
-			itemType := strings.TrimSpace(kitutil.Interface2String(item["type"]))
-			if len(pendingMedia) > 0 && itemType != responsesInputTypeFunctionCallOutput && itemType != responsesInputTypeCustomToolOutput {
-				messages = append(messages, dto.Message{Role: "user", Content: pendingMedia})
-				pendingMedia = nil
-			}
-			nextMessages, media, err := responsesInputItemToChatMessages(ctx, item, messages)
-			if err != nil {
-				return nil, err
-			}
-			messages = nextMessages
-			pendingMedia = append(pendingMedia, media...)
-		}
-		if len(pendingMedia) > 0 {
+		if len(pendingMedia) > 0 && itemType != responsesInputTypeFunctionCallOutput && itemType != responsesInputTypeCustomToolOutput {
 			messages = append(messages, dto.Message{Role: "user", Content: pendingMedia})
+			pendingMedia = nil
 		}
-		return messages, nil
-	default:
-		return nil, fmt.Errorf("unsupported responses input type %q", kitutil.GetJsonType(req.Input))
+		nextMessages, media, err := responsesInputItemToChatMessages(ctx, item, messages)
+		if err != nil {
+			return nil, err
+		}
+		messages = nextMessages
+		pendingMedia = append(pendingMedia, media...)
 	}
+	if len(pendingMedia) > 0 {
+		messages = append(messages, dto.Message{Role: "user", Content: pendingMedia})
+	}
+	return messages, nil
 }
 
 // responsesInputItemToChatMessages appends the Chat messages for one Responses input item.

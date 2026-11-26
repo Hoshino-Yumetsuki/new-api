@@ -51,7 +51,11 @@ func OpenAIResponsesRequestToGeminiChat(c context.Context, req *dto.OpenAIRespon
 	if err := applyResponsesTextToGemini(c, req.Text, geminiRequest, opts.Gemini.SupportsJSONSchemaModel(upstreamModelName)); err != nil {
 		return nil, err
 	}
-	reasoningIntent, diagnostics, err := reasoning.FromOpenAIResponses(req)
+	inputItems, err := InputItems(req.Input)
+	if err != nil {
+		return nil, err
+	}
+	reasoningIntent, diagnostics, err := responsesReasoningForConversion(req, inputItems)
 	if err != nil {
 		return nil, reasoning.AsClientError(err)
 	}
@@ -114,10 +118,6 @@ func OpenAIResponsesRequestToGeminiChat(c context.Context, req *dto.OpenAIRespon
 		}
 	}
 
-	inputItems, err := InputItems(req.Input)
-	if err != nil {
-		return nil, err
-	}
 	// Multimodal function responses (media in functionResponse.parts) are
 	// documented for Gemini 3. Gemini 1.x and 2.x get tool media as ordinary
 	// inlineData parts after the function responses of the same turn.
@@ -127,6 +127,8 @@ func OpenAIResponsesRequestToGeminiChat(c context.Context, req *dto.OpenAIRespon
 	for _, item := range inputItems {
 		itemType := strings.TrimSpace(kitutil.Interface2String(item["type"]))
 		switch itemType {
+		case "configuration_update":
+			continue
 		case ResponsesInputTypeFunctionCall, ResponsesInputTypeCustomToolCall:
 			part, callID, err := responsesFunctionCallItemToGeminiPart(item, itemType)
 			if err != nil {

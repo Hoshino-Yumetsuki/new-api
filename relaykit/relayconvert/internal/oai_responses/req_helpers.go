@@ -4,11 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/relayconvert/internal/convdiag"
 	kitutil "github.com/QuantumNous/new-api/relaykit/relayconvert/kitutil"
+	"github.com/QuantumNous/new-api/relaykit/relayconvert/reasoning"
 	"github.com/QuantumNous/new-api/relaykit/types"
 )
 
@@ -59,6 +62,47 @@ func responsesInputItems(raw []byte) ([]map[string]any, error) {
 
 func InputItems(raw []byte) ([]map[string]any, error) {
 	return responsesInputItems(raw)
+}
+
+// responsesReasoningForConversion applies conversation updates only to a copy;
+// native Responses requests must retain their original wire configuration.
+func responsesReasoningForConversion(req *dto.OpenAIResponsesRequest, items []map[string]any) (reasoning.Intent, []types.ConversionDiagnostic, error) {
+	copyReq := *req
+	var updated dto.Reasoning
+	if req.Reasoning != nil {
+		updated = *req.Reasoning
+	}
+	for i, item := range items {
+		if strings.TrimSpace(kitutil.Interface2String(item["type"])) != "configuration_update" {
+			continue
+		}
+		for _, key := range slices.Sorted(maps.Keys(item)) {
+			if key != "type" && key != "id" && key != "reasoning" {
+				return reasoning.Intent{}, nil, fmt.Errorf("unsupported configuration update field input[%d].%s", i, key)
+			}
+		}
+		if item["reasoning"] == nil {
+			continue
+		}
+		update, ok := item["reasoning"].(map[string]any)
+		if !ok {
+			return reasoning.Intent{}, nil, fmt.Errorf("invalid input[%d].reasoning: expected object", i)
+		}
+		for _, key := range slices.Sorted(maps.Keys(update)) {
+			if key != "effort" {
+				return reasoning.Intent{}, nil, fmt.Errorf("unsupported configuration update field input[%d].reasoning.%s", i, key)
+			}
+		}
+		if value, exists := update["effort"]; exists && value != nil {
+			effort, ok := value.(string)
+			if !ok || strings.TrimSpace(effort) == "" {
+				return reasoning.Intent{}, nil, fmt.Errorf("invalid input[%d].reasoning.effort", i)
+			}
+			updated.Effort = effort
+			copyReq.Reasoning = &updated
+		}
+	}
+	return reasoning.FromOpenAIResponses(&copyReq)
 }
 
 // omitTrailingAssistantText drops the assistant turns without tool calls that

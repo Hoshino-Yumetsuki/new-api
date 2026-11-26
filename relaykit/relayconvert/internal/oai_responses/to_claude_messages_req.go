@@ -59,7 +59,11 @@ func OpenAIResponsesRequestToClaudeMessages(c context.Context, info convmeta.Met
 	if toolChoice != nil || RawJSONPresent(req.ParallelToolCalls) {
 		claudeRequest.ToolChoice = sharedclaude.MapOpenAIToolChoice(toolChoice, ParallelToolCalls(req.ParallelToolCalls))
 	}
-	sourceReasoning, diagnostics, err := reasoning.FromOpenAIResponses(req)
+	inputItems, err := InputItems(req.Input)
+	if err != nil {
+		return nil, err
+	}
+	sourceReasoning, diagnostics, err := responsesReasoningForConversion(req, inputItems)
 	if err != nil {
 		return nil, reasoning.AsClientError(err)
 	}
@@ -88,13 +92,11 @@ func OpenAIResponsesRequestToClaudeMessages(c context.Context, info convmeta.Met
 		}
 	}
 
-	inputItems, err := InputItems(req.Input)
-	if err != nil {
-		return nil, err
-	}
 	for _, item := range inputItems {
 		itemType := strings.TrimSpace(kitutil.Interface2String(item["type"]))
 		switch itemType {
+		case "configuration_update":
+			continue
 		case ResponsesInputTypeFunctionCall:
 			claudeRequest.Messages = appendClaudeToolUse(claudeRequest.Messages, responsesFunctionCallItemToClaudeToolUse(item))
 		case ResponsesInputTypeCustomToolCall:
