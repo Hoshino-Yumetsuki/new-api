@@ -28,8 +28,9 @@ func (r *GeminiChatRequest) UnmarshalJSON(data []byte) error {
 	type Alias GeminiChatRequest
 	var aux struct {
 		Alias
-		SystemInstructionSnake *GeminiChatContent `json:"system_instruction,omitempty"`
-		ContinuationTokenSnake json.RawMessage    `json:"continuation_token,omitempty"`
+		GenerationConfigSnake  *GeminiChatGenerationConfig `json:"generation_config,omitempty"`
+		SystemInstructionSnake *GeminiChatContent          `json:"system_instruction,omitempty"`
+		ContinuationTokenSnake json.RawMessage             `json:"continuation_token,omitempty"`
 	}
 
 	if err := kitutil.Unmarshal(data, &aux); err != nil {
@@ -38,6 +39,9 @@ func (r *GeminiChatRequest) UnmarshalJSON(data []byte) error {
 
 	*r = GeminiChatRequest(aux.Alias)
 
+	if aux.GenerationConfigSnake != nil {
+		r.GenerationConfig = *aux.GenerationConfigSnake
+	}
 	if aux.SystemInstructionSnake != nil {
 		r.SystemInstructions = aux.SystemInstructionSnake
 	}
