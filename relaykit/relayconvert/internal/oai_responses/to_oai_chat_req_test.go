@@ -13,6 +13,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestConfigurationUpdateValidation(t *testing.T) {
+	for _, input := range []string{
+		`[{"type":"configuration_update","reasoning":{"effort":"bogus"}}]`,
+		`[{"type":"configuration_update","reasoning":{"effort":42}}]`,
+		`[{"type":"configuration_update","reasoning":"high"}]`,
+		`[{"type":"configuration_update","reasoning":{"effort":"high"},"text":{"format":{"type":"json_schema"}}}]`,
+		`[{"type":"configuration_update","reasoning":{"effort":"high","future":true}}]`,
+	} {
+		_, err := ResponsesRequestToChatCompletionsRequest(context.Background(), &dto.OpenAIResponsesRequest{Model: "gpt-test", Input: json.RawMessage(input)})
+		require.Error(t, err)
+	}
+}
+
 func TestResponsesRequestToChatCompletionsRequestInstructionsAndScalarInput(t *testing.T) {
 	stream := true
 	temperature := 0.0
@@ -506,6 +519,7 @@ func TestResponsesRequestToChatCompletionsRequestHoistsToolOutputMediaAfterToolB
 				{"type": "function_call", "call_id": "call_1", "name": "screenshot", "arguments": "{}"},
 				{"type": "custom_tool_call", "call_id": "call_2", "name": "exec", "input": "ls"},
 				{"type": "function_call_output", "call_id": "call_1", "output": imageOutput},
+				{"type": "configuration_update", "reasoning": map[string]any{"effort": "high"}},
 				{"type": "custom_tool_call_output", "call_id": "call_2", "output": "file.txt"},
 			}),
 		})

@@ -187,6 +187,49 @@ func TestFromClaudeKeepsOutOfRangeBudgetsForTheRenderer(t *testing.T) {
 	assert.Equal(t, []string{"claude_thinking_type_coerced"}, diagnosticCodes(diagnostics))
 }
 
+func TestClaudeThinkingAndTurnEffort(t *testing.T) {
+	budget := 4096
+	for _, model := range []string{"claude-opus-4-6", "claude-sonnet-4-6", "claude-mythos-preview"} {
+		t.Run(model, func(t *testing.T) {
+			intent := Intent{Mode: ModeEnabled, BudgetTokens: &budget}
+			assert.False(t, ClaudeUsesManualThinking(model, intent))
+			rendered, err := RenderClaude(model, intent, nil, 0.8)
+			require.NoError(t, err)
+			require.NotNil(t, rendered.Thinking)
+			assert.Equal(t, "adaptive", rendered.Thinking.Type)
+			assert.Equal(t, EffortMedium, rendered.OutputEffort)
+		})
+	}
+
+	for _, tc := range []struct {
+		name     string
+		messages []dto.ClaudeMessage
+		want     Effort
+	}{
+		{"before user", []dto.ClaudeMessage{{Role: "system", OutputConfig: []byte(`{"effort":"low"}`)}, {Role: "user", Content: "hello"}}, EffortLow},
+		{"after user", []dto.ClaudeMessage{{Role: "user", Content: "hello"}, {Role: "system", OutputConfig: []byte(`{"effort":"low"}`)}}, EffortLow},
+		{"pending after assistant", []dto.ClaudeMessage{{Role: "assistant", Content: "hello"}, {Role: "system", OutputConfig: []byte(`{"effort":"low"}`)}}, EffortHigh},
+		{"pending through tool result", []dto.ClaudeMessage{{Role: "assistant", Content: "hello"}, {Role: "system", OutputConfig: []byte(`{"effort":"low"}`)}, {Role: "user", Content: []dto.ClaudeMediaMessage{{Type: "tool_result"}}}}, EffortHigh},
+		{"last active wins", []dto.ClaudeMessage{{Role: "system", OutputConfig: []byte(`{"effort":"medium"}`)}, {Role: "user", Content: "hello"}, {Role: "assistant", Content: "hello"}, {Role: "system", OutputConfig: []byte(`{"effort":"low"}`)}, {Role: "user", Content: []dto.ClaudeMediaMessage{{Type: "text"}}}}, EffortLow},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			intent, _, err := FromClaude(&dto.ClaudeRequest{OutputConfig: []byte(`{"effort":"high"}`), Messages: tc.messages})
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, intent.Effort)
+		})
+	}
+
+	intent, diagnostics, err := FromClaude(&dto.ClaudeRequest{Thinking: &dto.Thinking{Type: "between_tools"}, OutputConfig: []byte(`{"effort":"high"}`)})
+	require.NoError(t, err)
+	assert.Equal(t, ModeDisabled, intent.Mode)
+	assert.Equal(t, EffortHigh, intent.Effort)
+	assert.Empty(t, diagnostics)
+	rendered, err := RenderClaude("claude-sonnet-5-5", intent, nil, 0.8)
+	require.NoError(t, err)
+	assert.Equal(t, "between_tools", rendered.Thinking.Type)
+	assert.Equal(t, EffortHigh, rendered.OutputEffort)
+}
+
 func TestIntentStateRoundTrip(t *testing.T) {
 	t.Parallel()
 

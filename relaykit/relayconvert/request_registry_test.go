@@ -405,6 +405,73 @@ func TestConvertRequestClaudeToResponsesDropsIncompatibleContextManagement(t *te
 	assert.Empty(t, responsesReq.ContextManagement)
 }
 
+func TestReasoningEffortOnUpstreamWire(t *testing.T) {
+	const chat, responses = types.RelayFormatOpenAI, types.RelayFormatOpenAIResponses
+	const claude, gemini = types.RelayFormatClaude, types.RelayFormatGemini
+	for _, tc := range []struct {
+		from, to            types.RelayFormat
+		model, effort, want string
+	}{
+		{chat, responses, "gpt-5.2", "high", `{"effort":"high"}`},
+		{chat, claude, "claude-opus-5-5", "minimal", `{"effort":"low"}`},
+		{chat, gemini, "models/gemini-2.5-flash", "medium", `{"thinkingBudget":8192}`},
+		{responses, chat, "gpt-5", "none", `"minimal"`},
+		{responses, claude, "claude-opus-5-5", "xhigh", `{"effort":"xhigh"}`},
+		{responses, gemini, "models/gemini-3.8-flash", "none", `{"thinkingLevel":"low"}`},
+		{claude, chat, "gpt-5.2-2025-12-11", "max", `"xhigh"`},
+		{claude, responses, "gpt-6-astra", "max", `{"effort":"max"}`},
+		{claude, gemini, "google/gemini-4-neon", "max", `{"thinkingLevel":"xhigh"}`},
+		{gemini, chat, "gpt-6.2-astra", "MINIMAL", `"low"`},
+		{gemini, responses, "gpt-5.4-pro", "LOW", `{"effort":"medium"}`},
+		{gemini, claude, "claude-sonnet-4-6", "MEDIUM", `{"effort":"medium"}`},
+	} {
+		t.Run(string(tc.from)+"_to_"+string(tc.to), func(t *testing.T) {
+			info := &convmeta.Values{ChannelMetaAttached: true, UpstreamModelName: tc.model}
+			var request any
+			switch tc.from {
+			case chat:
+				request = &dto.GeneralOpenAIRequest{Model: tc.model, Messages: []dto.Message{{Role: "user", Content: "hi"}}, ReasoningEffort: tc.effort}
+			case responses:
+				request = &dto.OpenAIResponsesRequest{Model: tc.model, Input: json.RawMessage(`"hi"`), Reasoning: &dto.Reasoning{Effort: tc.effort}}
+			case claude:
+				info.OriginModelName = "claude-opus-5-5"
+				request = &dto.ClaudeRequest{Model: tc.model, Messages: []dto.ClaudeMessage{{Role: "user", Content: "hi"}}, Thinking: &dto.Thinking{Type: "adaptive"}, OutputConfig: mustRawMessage(t, map[string]string{"effort": tc.effort})}
+			case gemini:
+				info.OriginModelName = "gemini-3-flash-preview"
+				request = &dto.GeminiChatRequest{}
+				require.NoError(t, kitutil.UnmarshalJsonStr(`{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"generation_config":{"thinking_config":{"thinking_level":"`+tc.effort+`"}}}`, request))
+			}
+			result, err := ConvertRequest(t.Context(), info, tc.to, request)
+			require.NoError(t, err)
+			wire, err := kitutil.Marshal(result.Value)
+			require.NoError(t, err)
+			var control json.RawMessage
+			switch tc.to {
+			case chat:
+				control = kitutil.ObjectMember(wire, "reasoning_effort")
+			case responses:
+				control = kitutil.ObjectMember(wire, "reasoning")
+			case claude:
+				control = kitutil.ObjectMember(wire, "output_config")
+				assert.JSONEq(t, `"adaptive"`, string(kitutil.ObjectMember(kitutil.ObjectMember(wire, "thinking"), "type")))
+			case gemini:
+				control = kitutil.ObjectMember(kitutil.ObjectMember(wire, "generationConfig"), "thinkingConfig")
+			}
+			assert.JSONEq(t, tc.want, string(control))
+		})
+	}
+}
+
+func TestGeminiDeploymentAliasKeepsChatEffort(t *testing.T) {
+	info := &convmeta.Values{ChannelMetaAttached: true, OriginModelName: "gemini-2.5-flash", UpstreamModelName: "deployment-42"}
+	req := &dto.GeneralOpenAIRequest{Model: info.UpstreamModelName, ReasoningEffort: "none", Messages: []dto.Message{{Role: "user", Content: "hi"}}}
+	result, err := ConvertRequest(t.Context(), info, types.RelayFormatGemini, req)
+	require.NoError(t, err)
+	wire, err := kitutil.Marshal(result.Value)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"thinkingBudget":0}`, string(kitutil.ObjectMember(kitutil.ObjectMember(wire, "generationConfig"), "thinkingConfig")))
+}
+
 func TestConvertRequestClaudeAdaptiveThinkingPreservesEffort(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -656,6 +723,42 @@ func TestConvertRequestResponsesToGeminiKeepsCustomToolHistory(t *testing.T) {
 		_, err := ConvertRequest(nil, info(), types.RelayFormatGemini, req)
 		require.ErrorContains(t, err, "custom_tool_call item is missing name")
 	})
+}
+
+func TestResponsesConfigurationUpdateConversion(t *testing.T) {
+	maxTokens := uint(50000)
+	input := json.RawMessage(`[{"type":"configuration_update","reasoning":{"effort":"medium"}},{"type":"configuration_update","reasoning":{"effort":"high"}},{"role":"user","content":"hello"}]`)
+	for _, tc := range []struct {
+		name   string
+		target types.RelayFormat
+		model  string
+	}{
+		{"chat", types.RelayFormatOpenAI, "gpt-test"},
+		{"claude", types.RelayFormatClaude, "claude-sonnet-4-6"},
+		{"gemini", types.RelayFormatGemini, "gemini-3-pro-preview"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := &dto.OpenAIResponsesRequest{Model: tc.model, Input: input, Reasoning: &dto.Reasoning{Effort: "low"}, MaxOutputTokens: &maxTokens}
+			info := &convmeta.Values{ConversionChain: []types.RelayFormat{types.RelayFormatOpenAIResponses}, ChannelMetaAttached: true, UpstreamModelName: tc.model}
+			result, err := ConvertRequest(nil, info, tc.target, req)
+			require.NoError(t, err)
+			switch got := result.Value.(type) {
+			case *dto.GeneralOpenAIRequest:
+				assert.Equal(t, "high", got.ReasoningEffort)
+				require.Len(t, got.Messages, 1)
+			case *dto.ClaudeRequest:
+				assert.Equal(t, "high", got.GetEfforts())
+				require.Len(t, got.Messages, 1)
+			case *dto.GeminiChatRequest:
+				require.NotNil(t, got.GenerationConfig.ThinkingConfig)
+				assert.Equal(t, "high", got.GenerationConfig.ThinkingConfig.ThinkingLevel)
+				require.Len(t, got.Contents, 1)
+			default:
+				t.Fatalf("unexpected request type %T", result.Value)
+			}
+			assert.Equal(t, "low", req.Reasoning.Effort)
+		})
+	}
 }
 
 func TestConvertRequestResponsesToGeminiUsesDirectConverter(t *testing.T) {
