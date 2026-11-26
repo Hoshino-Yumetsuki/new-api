@@ -33,10 +33,11 @@ type geminiCapabilities struct {
 }
 
 func geminiCapabilitiesFor(model string) geminiCapabilities {
-	model = strings.ToLower(model)
+	model = strings.ToLower(lastModelPathSegment(model))
 	switch {
 	case strings.HasPrefix(model, "gemini-2.5-flash-native-audio"),
-		strings.HasPrefix(model, "gemini-live-2.5-flash-preview-native-audio"):
+		strings.HasPrefix(model, "gemini-live-2.5-flash-preview-native-audio"),
+		strings.HasPrefix(model, "gemini-robotics-er-1.6"):
 		return geminiCapabilities{kind: geminiThinkingBudget, supportsDisable: true, maxBudget: 24576}
 	case strings.HasPrefix(model, "gemini-2.5-flash-image"),
 		strings.Contains(model, "-tts"),
@@ -56,11 +57,23 @@ func geminiCapabilitiesFor(model string) geminiCapabilities {
 		return geminiCapabilities{kind: geminiThinkingBudget, supportsDisable: true, minBudget: 512, maxBudget: 24576}
 	case strings.HasPrefix(model, "gemini-2.5-"):
 		return geminiCapabilities{kind: geminiThinkingBudget, supportsDisable: true, maxBudget: 24576}
-	case strings.HasPrefix(model, "gemini-3"), strings.HasPrefix(model, "gemini-4-"):
+	case strings.HasPrefix(model, "gemini-3"), strings.HasPrefix(model, "gemini-4-"), strings.HasPrefix(model, "gemini-robotics-er-2"):
 		return geminiCapabilities{kind: geminiThinkingLevel}
 	default:
 		return geminiCapabilities{}
 	}
+}
+
+// GeminiCapabilityModel uses the client-facing Gemini name when the upstream
+// is an opaque deployment ID. Never substitute one named Gemini model for another.
+func GeminiCapabilityModel(upstream, origin string) string {
+	if strings.HasPrefix(strings.ToLower(lastModelPathSegment(upstream)), "gemini-") || geminiCapabilitiesFor(upstream).kind != geminiThinkingUnknown {
+		return upstream
+	}
+	if geminiCapabilitiesFor(origin).kind != geminiThinkingUnknown {
+		return origin
+	}
+	return upstream
 }
 
 // RenderGemini maps a portable intent onto the target model's thinkingConfig.
@@ -213,11 +226,13 @@ func RenderGemini(model string, intent Intent, maxOutputTokens *uint, adapterBud
 }
 
 func geminiDefaultEffort(model string) Effort {
-	model = strings.ToLower(model)
+	model = strings.ToLower(lastModelPathSegment(model))
 	switch {
 	case strings.HasPrefix(model, "gemini-4-argon-cyber-permissive"):
 		return EffortHigh
-	case strings.HasPrefix(model, "gemini-4-argon"):
+	case strings.HasPrefix(model, "gemini-4-neon"), strings.HasPrefix(model, "gemini-4-hydrogen"), strings.HasPrefix(model, "gemini-robotics-er-2"):
+		return EffortHigh
+	case strings.HasPrefix(model, "gemini-4-argon"), strings.HasPrefix(model, "gemini-4-carbon"), strings.HasPrefix(model, "gemini-3.8-flash"):
 		return EffortMedium
 	case model == "gemini-flash-latest",
 		strings.HasPrefix(model, "gemini-3.5-flash") && !strings.HasPrefix(model, "gemini-3.5-flash-lite"),
@@ -407,7 +422,7 @@ func ResolveGeminiDefault(model string, intent Intent) Intent {
 	}
 	capabilities := geminiCapabilitiesFor(model)
 	if capabilities.kind == geminiThinkingBudget {
-		if strings.HasPrefix(strings.ToLower(model), "gemini-2.5-flash-lite") {
+		if strings.HasPrefix(strings.ToLower(lastModelPathSegment(model)), "gemini-2.5-flash-lite") {
 			budget := 0
 			intent.Mode = ModeDisabled
 			intent.Effort = EffortNone
@@ -499,7 +514,7 @@ func gemini25BudgetForEffort(effort Effort, maxBudget int) int {
 }
 
 func geminiLevelForEffort(model string, effort Effort) (string, error) {
-	model = strings.ToLower(model)
+	model = strings.ToLower(lastModelPathSegment(model))
 	switch {
 	case strings.HasPrefix(model, "gemini-3.1-flash-image"),
 		strings.HasPrefix(model, "gemini-3.1-flash-lite-image"):
@@ -522,7 +537,7 @@ func geminiLevelForEffort(model string, effort Effort) (string, error) {
 			}
 			return string(EffortHigh), nil
 		}
-	case strings.HasPrefix(model, "gemini-3.1-pro"), model == "gemini-pro-latest":
+	case strings.HasPrefix(model, "gemini-3.1-pro"), strings.HasPrefix(model, "gemini-3.8-flash"), model == "gemini-pro-latest":
 		if effort == EffortMinimal {
 			return string(EffortLow), nil
 		}

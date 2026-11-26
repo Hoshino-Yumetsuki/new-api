@@ -123,6 +123,9 @@ func ApplyThinkingConfig(ctx context.Context, geminiRequest *dto.GeminiChatReque
 	}
 
 	baseModel := modelName
+	if info != nil {
+		baseModel = reasoning.GeminiCapabilityModel(modelName, info.GetOriginModelName())
+	}
 	suffix := reasoning.IntentFromState(convmeta.ReasoningStateOf(info))
 	preserveSuffix := opts.ShouldPreserveThinkingSuffix(modelName)
 	if info != nil && opts.ShouldPreserveThinkingSuffix(info.GetOriginModelName()) {
