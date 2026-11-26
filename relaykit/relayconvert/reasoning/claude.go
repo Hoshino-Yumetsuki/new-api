@@ -23,7 +23,6 @@ type ClaudeRender struct {
 
 type claudeCapabilities struct {
 	adaptive        bool
-	supportsManual  bool
 	defaultThinking bool
 	supportsDisable bool
 	// disableAsBetweenTools marks models whose lowest thinking setting is
@@ -43,14 +42,13 @@ type claudeCapabilities struct {
 }
 
 func claudeCapabilitiesFor(model string) claudeCapabilities {
-	model = strings.ToLower(model)
-	capabilities := claudeCapabilities{supportsManual: true, supportsDisable: true, defaultEffort: EffortHigh}
+	model = strings.ToLower(lastModelPathSegment(model))
+	capabilities := claudeCapabilities{supportsDisable: true, defaultEffort: EffortHigh}
 
 	switch {
 	case strings.HasPrefix(model, "claude-fable-5"),
 		strings.HasPrefix(model, "claude-mythos-5"):
 		capabilities.adaptive = true
-		capabilities.supportsManual = false
 		capabilities.defaultThinking = true
 		capabilities.supportsDisable = false
 		capabilities.supportsEffort = true
@@ -69,7 +67,6 @@ func claudeCapabilitiesFor(model string) claudeCapabilities {
 		// Opus 5.5 cannot turn thinking off at all; Sonnet 5.5 turns it off
 		// with between_tools, which takes effort high or below only.
 		capabilities.adaptive = true
-		capabilities.supportsManual = false
 		capabilities.defaultThinking = true
 		capabilities.supportsDisable = false
 		capabilities.disableAsBetweenTools = strings.HasPrefix(model, "claude-sonnet-5-5")
@@ -87,7 +84,6 @@ func claudeCapabilitiesFor(model string) claudeCapabilities {
 		strings.HasPrefix(model, "claude-opus-4-8"),
 		strings.HasPrefix(model, "claude-opus-4-7"):
 		capabilities.adaptive = true
-		capabilities.supportsManual = false
 		if strings.HasPrefix(model, "claude-opus-5") || strings.HasPrefix(model, "claude-sonnet-5") || strings.HasPrefix(model, "claude-haiku-5") {
 			capabilities.defaultThinking = true
 		}
@@ -217,14 +213,13 @@ func RenderClaude(model string, intent Intent, maxTokens *uint, adapterBudgetPer
 		}, nil
 	}
 
-	preferManual := capabilities.supportsManual && intent.BudgetTokens != nil && intent.Mode != ModeAdaptive
-	if !capabilities.supportsManual && intent.BudgetTokens != nil && intent.Mode == ModeEnabled {
+	if capabilities.adaptive && intent.BudgetTokens != nil && intent.Mode == ModeEnabled {
 		diagnostics = append(diagnostics, claudeReasoningDiagnostic(
 			"claude_budget_to_adaptive",
 			fmt.Sprintf("model %q uses adaptive thinking; budget_tokens was converted to an effort level", model),
 		))
 	}
-	if capabilities.adaptive && !preferManual {
+	if capabilities.adaptive {
 		effort := intent.Effort
 		if effort == "" && intent.BudgetTokens != nil {
 			effort = EffortFromBudget(*intent.BudgetTokens)
@@ -410,7 +405,7 @@ func claudeEffortDiagnostics(model string, requested Effort, sent Effort) []type
 // as legacy extended thinking rather than being reduced to adaptive effort.
 func ClaudeUsesManualThinking(model string, intent Intent) bool {
 	capabilities := claudeCapabilitiesFor(model)
-	return capabilities.supportsManual && intent.BudgetTokens != nil && intent.Mode != ModeAdaptive
+	return !capabilities.adaptive && intent.BudgetTokens != nil && intent.Mode != ModeAdaptive
 }
 
 func IsKnownClaudeModel(model string) bool {

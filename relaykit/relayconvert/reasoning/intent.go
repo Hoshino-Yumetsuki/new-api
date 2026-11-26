@@ -571,7 +571,7 @@ func FromClaude(req *dto.ClaudeRequest) (Intent, []types.ConversionDiagnostic, e
 			intent.Mode = ModeEnabled
 		case "adaptive":
 			intent.Mode = ModeAdaptive
-		case "disabled":
+		case "disabled", "between_tools":
 			intent.Mode = ModeDisabled
 			intent.Effort = EffortNone
 		default:
